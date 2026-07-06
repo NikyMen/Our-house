@@ -1,0 +1,495 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="OurHouse · Mi casa">
+  <main class="casa-page">
+    <div class="casa-wrap">
+      <header class="casa-header">
+        <div class="brand">
+          <span class="logo">🏠</span>
+          <div>
+            <h1>OurHouse</h1>
+            <p class="tagline">Elegí tu casa o creá una nueva</p>
+          </div>
+        </div>
+        <div class="user-area">
+          <span id="user-greeting" class="user-greeting"></span>
+          <button id="logout-btn" class="btn-ghost" type="button">Salir</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>Mis casas</h2>
+        <ul id="house-list" class="house-list"></ul>
+        <p id="houses-empty" class="empty" hidden>
+          Todavía no estás en ninguna casa. Creá una o unite con un código de invitación. 👇
+        </p>
+      </section>
+
+      <div class="two-col">
+        <section class="card">
+          <h2>➕ Crear una casa</h2>
+          <p class="help">
+            Se genera un código de invitación para que los demás integrantes se unan.
+          </p>
+          <form id="create-form" autocomplete="off">
+            <div class="field">
+              <label for="house-name">Nombre de la casa</label>
+              <input id="house-name" name="name" type="text" placeholder="Casa de Nico y Eli" required maxlength="40" />
+            </div>
+            <p id="create-error" class="form-error" hidden></p>
+            <button type="submit" class="btn-primary">Crear casa</button>
+          </form>
+        </section>
+
+        <section class="card">
+          <h2>🔑 Unirse con código</h2>
+          <p class="help">
+            Pedile el código de invitación a quien creó la casa e ingresalo acá.
+          </p>
+          <form id="join-form" autocomplete="off">
+            <div class="field">
+              <label for="join-code">Código de invitación</label>
+              <input id="join-code" name="code" type="text" placeholder="ABC123" required maxlength="6" class="code-input" />
+            </div>
+            <p id="join-error" class="form-error" hidden></p>
+            <button type="submit" class="btn-join">Unirme</button>
+          </form>
+        </section>
+      </div>
+
+      <footer class="foot">
+        Todo se guarda en este navegador (localStorage): para que alguien se una con el
+        código tiene que crear su cuenta en este mismo navegador.
+      </footer>
+    </div>
+  </main>
+
+  <template id="house-row-tpl">
+    <li class="house-item">
+      <div class="house-main">
+        <span class="house-name"></span>
+        <span class="house-meta"></span>
+      </div>
+      <div class="house-code">
+        <span class="code-label">Código</span>
+        <code class="code-value"></code>
+        <button class="btn-copy" type="button" title="Copiar código">📋</button>
+      </div>
+      <div class="house-actions">
+        <button class="btn-enter" type="button">Entrar</button>
+        <button class="btn-leave" type="button" title="Salir de esta casa">Abandonar</button>
+      </div>
+    </li>
+  </template>
+</Layout>
+
+<script>
+  import { getCurrentUser, logout, type User } from '../lib/auth';
+  import {
+    createHouse,
+    housesOf,
+    joinHouse,
+    leaveHouse,
+    loadHouses,
+    setActiveHouse,
+    getActiveHouse,
+    type House,
+  } from '../lib/house';
+  import { migrateLegacyData } from '../lib/store';
+
+  const user = getCurrentUser();
+  if (!user) {
+    window.location.replace('/');
+  }
+  const currentUser: User = user!;
+
+  // Si ya hay una casa activa y no vino a elegir otra, directo a la app.
+  const wantsToPick = new URLSearchParams(window.location.search).has('elegir');
+  if (!wantsToPick && getActiveHouse(currentUser)) {
+    window.location.replace('/app');
+  }
+
+  const $ = <T extends HTMLElement>(sel: string): T => document.querySelector<T>(sel)!;
+
+  const houseList = $<HTMLUListElement>('#house-list');
+  const housesEmpty = $<HTMLParagraphElement>('#houses-empty');
+  const rowTpl = $<HTMLTemplateElement>('#house-row-tpl');
+  const createForm = $<HTMLFormElement>('#create-form');
+  const createError = $<HTMLParagraphElement>('#create-error');
+  const joinForm = $<HTMLFormElement>('#join-form');
+  const joinError = $<HTMLParagraphElement>('#join-error');
+
+  $<HTMLSpanElement>('#user-greeting').textContent = `Hola, ${currentUser.displayName}`;
+
+  function enter(house: House): void {
+    setActiveHouse(currentUser.username, house.id);
+    window.location.replace('/app');
+  }
+
+  function render(): void {
+    const houses = housesOf(currentUser.username);
+    houseList.innerHTML = '';
+    housesEmpty.hidden = houses.length > 0;
+
+    for (const h of houses) {
+      const node = rowTpl.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
+      node.querySelector<HTMLSpanElement>('.house-name')!.textContent = `🏡 ${h.name}`;
+      const names = h.members.map((m) => m.displayName).join(', ');
+      node.querySelector<HTMLSpanElement>('.house-meta')!.textContent =
+        `${h.members.length} ${h.members.length === 1 ? 'integrante' : 'integrantes'}: ${names}`;
+      node.querySelector<HTMLElement>('.code-value')!.textContent = h.inviteCode;
+
+      const copyBtn = node.querySelector<HTMLButtonElement>('.btn-copy')!;
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(h.inviteCode);
+          copyBtn.textContent = '✅';
+          setTimeout(() => (copyBtn.textContent = '📋'), 1500);
+        } catch {
+          copyBtn.textContent = h.inviteCode;
+        }
+      });
+
+      node.querySelector<HTMLButtonElement>('.btn-enter')!.addEventListener('click', () => enter(h));
+      node.querySelector<HTMLButtonElement>('.btn-leave')!.addEventListener('click', () => {
+        const ok = window.confirm(
+          `¿Salir de "${h.name}"? Si sos el último integrante, la casa y sus datos quedan huérfanos.`
+        );
+        if (!ok) return;
+        leaveHouse(h.id, currentUser.username);
+        render();
+      });
+
+      houseList.append(node);
+    }
+  }
+
+  createForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const data = new FormData(createForm);
+    const isFirstHouse = loadHouses().length === 0;
+    const result = createHouse(String(data.get('name')), currentUser);
+    if (typeof result === 'string') {
+      createError.textContent = result;
+      createError.hidden = false;
+      return;
+    }
+    // Si había datos de la versión anterior (sin casas), pasan a esta casa.
+    if (isFirstHouse) migrateLegacyData(result.id);
+    enter(result);
+  });
+
+  joinForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const data = new FormData(joinForm);
+    const result = joinHouse(String(data.get('code')), currentUser);
+    if (typeof result === 'string') {
+      joinError.textContent = result;
+      joinError.hidden = false;
+      return;
+    }
+    enter(result);
+  });
+
+  $<HTMLInputElement>('#join-code').addEventListener('input', (e) => {
+    const input = e.target as HTMLInputElement;
+    input.value = input.value.toUpperCase();
+    joinError.hidden = true;
+  });
+
+  $<HTMLButtonElement>('#logout-btn').addEventListener('click', () => {
+    logout();
+    window.location.replace('/');
+  });
+
+  render();
+</script>
+
+<style>
+  .casa-page {
+    min-height: 100dvh;
+    padding: clamp(1rem, 3vw, 2.5rem);
+  }
+
+  .casa-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .casa-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .logo {
+    font-size: 2.4rem;
+    line-height: 1;
+    filter: drop-shadow(0 6px 12px rgba(99, 102, 241, 0.4));
+  }
+
+  .brand h1 {
+    font-size: 1.7rem;
+  }
+
+  .tagline {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .user-area {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .user-greeting {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .btn-ghost {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.5rem 0.85rem;
+    border-radius: 10px;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    box-shadow: var(--shadow);
+  }
+
+  .card h2 {
+    font-size: 1.15rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .help {
+    margin: 0 0 1rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .house-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .house-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    transition: border-color 0.15s ease;
+  }
+
+  .house-item:hover {
+    border-color: var(--accent);
+  }
+
+  .house-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .house-name {
+    font-weight: 650;
+  }
+
+  .house-meta {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .house-code {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .code-label {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+
+  .code-value {
+    background: var(--bg);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 0.25rem 0.5rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+
+  .btn-copy {
+    background: transparent;
+    border: none;
+    font-size: 1rem;
+    padding: 0.2rem;
+    border-radius: 8px;
+  }
+
+  .btn-copy:hover {
+    background: rgba(99, 102, 241, 0.15);
+  }
+
+  .house-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .btn-enter {
+    background: var(--accent);
+    border: none;
+    color: white;
+    font-weight: 600;
+    padding: 0.5rem 0.9rem;
+    border-radius: 10px;
+    transition: background 0.15s ease;
+  }
+
+  .btn-enter:hover {
+    background: var(--accent-hover);
+  }
+
+  .btn-leave {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 0.5rem 0.9rem;
+    border-radius: 10px;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .btn-leave:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  .field {
+    margin-bottom: 0.9rem;
+  }
+
+  .field label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 0.35rem;
+  }
+
+  .code-input {
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-weight: 700;
+  }
+
+  .form-error {
+    color: var(--danger);
+    font-size: 0.85rem;
+    margin: 0 0 0.75rem;
+  }
+
+  .btn-primary,
+  .btn-join {
+    width: 100%;
+    margin-top: 0.4rem;
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-weight: 600;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+  }
+
+  .btn-primary:hover {
+    background: var(--accent-hover);
+  }
+
+  .btn-join {
+    background: #10b981;
+  }
+
+  .btn-join:hover {
+    background: #059669;
+  }
+
+  .btn-primary:active,
+  .btn-join:active {
+    transform: translateY(1px);
+  }
+
+  .empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 1.5rem 1rem;
+    margin: 0;
+  }
+
+  .foot {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+
+  @media (max-width: 700px) {
+    .two-col {
+      grid-template-columns: 1fr;
+    }
+    .house-item {
+      grid-template-columns: 1fr;
+      gap: 0.6rem;
+    }
+    .house-actions button {
+      flex: 1;
+      padding: 0.65rem 0.9rem;
+    }
+  }
+</style>

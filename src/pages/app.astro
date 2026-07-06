@@ -1,0 +1,1499 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { CATEGORIES, INCOME_TYPES } from '../lib/types';
+---
+
+<Layout title="OurHouse · App">
+  <div class="page" id="page" data-view="resumen" data-add-mode="gasto">
+    <header class="header">
+      <div class="brand">
+        <span class="logo">🏠</span>
+        <div>
+          <h1>OurHouse</h1>
+          <p id="house-tagline" class="tagline">Gastos del hogar</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="house-chip" title="Código de invitación de la casa">
+          <span class="house-chip-label">Invitar:</span>
+          <code id="house-code" class="house-code"></code>
+          <button id="copy-code-btn" class="btn-copy" type="button" title="Copiar código de invitación">📋</button>
+          <a class="btn-house" href="/casa?elegir=1">Cambiar casa</a>
+        </div>
+        <div class="month-pick">
+          <label for="month-select">Mes</label>
+          <select id="month-select" aria-label="Seleccionar mes"></select>
+        </div>
+        <button id="hide-btn" class="btn-hide" type="button" aria-pressed="false" title="Ocultar importes">
+          👁️ Ocultar
+        </button>
+        <div class="user-area">
+          <span id="user-greeting" class="user-greeting"></span>
+          <button id="logout-btn" class="btn-logout" type="button">Salir</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="summary">
+      <article class="card saldo-card" id="saldo-card">
+        <span class="card-label">Saldo del mes</span>
+        <strong id="saldo-value" class="total-value">—</strong>
+        <span id="saldo-hint" class="card-hint"></span>
+      </article>
+      <article class="card">
+        <span class="card-label">Por categoría</span>
+        <ul id="by-category" class="breakdown"></ul>
+      </article>
+      <article class="card">
+        <span class="card-label">Quién pagó</span>
+        <ul id="by-person" class="breakdown"></ul>
+      </article>
+    </section>
+
+    <section class="layout-grid">
+      <div class="form-col">
+        <div class="add-switch" role="tablist" aria-label="Tipo de movimiento">
+          <button type="button" class="add-tab active" data-mode="gasto" role="tab" aria-selected="true">
+            💸 Gasto
+          </button>
+          <button type="button" class="add-tab" data-mode="ingreso" role="tab" aria-selected="false">
+            💰 Ingreso
+          </button>
+        </div>
+
+        <aside class="card form-card card-expense">
+          <h2>Nuevo gasto</h2>
+          <form id="expense-form" autocomplete="off">
+            <div class="field">
+              <label for="description">Descripción</label>
+              <input id="description" name="description" type="text" placeholder="Compra semanal" required maxlength="80" />
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="amount">Importe ($)</label>
+                <input id="amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0,00" required />
+              </div>
+              <div class="field">
+                <label for="date">Fecha</label>
+                <input id="date" name="date" type="date" required />
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="category">Categoría</label>
+                <select id="category" name="category">
+                  {CATEGORIES.map((c) => <option value={c.id}>{c.emoji} {c.label}</option>)}
+                </select>
+              </div>
+              <div class="field">
+                <label for="paidBy">Pagado por</label>
+                <select id="paidBy" name="paidBy" required></select>
+              </div>
+            </div>
+            <button type="submit" class="btn-primary">Añadir gasto</button>
+          </form>
+        </aside>
+
+        <aside class="card form-card income-form-card card-income">
+          <div class="list-head">
+            <h2>Cargar saldo</h2>
+            <span id="income-month-total" class="card-hint"></span>
+          </div>
+          <form id="income-form" autocomplete="off">
+            <div class="field">
+              <label for="income-description">Descripción</label>
+              <input id="income-description" name="description" type="text" placeholder="Sueldo julio, trabajo extra…" required maxlength="80" />
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="income-amount">Importe ($)</label>
+                <input id="income-amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0,00" required />
+              </div>
+              <div class="field">
+                <label for="income-date">Fecha</label>
+                <input id="income-date" name="date" type="date" required />
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="income-type">Tipo</label>
+                <select id="income-type" name="type">
+                  {INCOME_TYPES.map((t) => <option value={t.id}>{t.emoji} {t.label}</option>)}
+                </select>
+              </div>
+              <div class="field">
+                <label for="income-person">Persona</label>
+                <select id="income-person" name="person" required></select>
+              </div>
+            </div>
+            <button type="submit" class="btn-income">Añadir ingreso</button>
+          </form>
+        </aside>
+
+        <aside class="card form-card card-fixed">
+          <div class="list-head">
+            <h2>Costos fijos</h2>
+            <span id="fixed-total" class="card-hint"></span>
+          </div>
+          <p class="fixed-help">Se suman automáticamente todos los meses.</p>
+          <form id="fixed-form" autocomplete="off">
+            <div class="field">
+              <label for="fixed-description">Descripción</label>
+              <input id="fixed-description" name="description" type="text" placeholder="Alquiler, internet…" required maxlength="80" />
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="fixed-amount">Importe ($)</label>
+                <input id="fixed-amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0,00" required />
+              </div>
+              <div class="field">
+                <label for="fixed-category">Categoría</label>
+                <select id="fixed-category" name="category">
+                  {CATEGORIES.map((c) => <option value={c.id}>{c.emoji} {c.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label for="fixed-paidBy">Pagado por</label>
+              <select id="fixed-paidBy" name="paidBy" required></select>
+            </div>
+            <button type="submit" class="btn-primary">Añadir costo fijo</button>
+          </form>
+          <ul id="fixed-list" class="expense-list fixed-list"></ul>
+          <p id="fixed-empty" class="empty" hidden>Sin costos fijos todavía.</p>
+        </aside>
+      </div>
+
+      <section class="card list-card">
+        <div class="list-head">
+          <h2>Movimientos</h2>
+          <span id="list-count" class="card-hint"></span>
+        </div>
+        <ul id="expense-list" class="expense-list"></ul>
+        <p id="empty-state" class="empty" hidden>
+          Todavía no hay movimientos este mes.
+          <span class="only-desktop">¡Cargá tu saldo o añadí un gasto! 👈</span>
+          <span class="only-mobile">Tocá el botón ➕ para cargar tu saldo o añadir un gasto.</span>
+        </p>
+      </section>
+    </section>
+
+    <section class="card settings-card" aria-label="Ajustes">
+      <h2>Ajustes</h2>
+      <p id="settings-user" class="settings-user"></p>
+
+      <div class="settings-block">
+        <span class="settings-label">Casa actual</span>
+        <p id="settings-house-name" class="settings-house-name"></p>
+        <p id="settings-house-members" class="settings-house-members"></p>
+      </div>
+
+      <div class="settings-block">
+        <span class="settings-label">Código de invitación</span>
+        <div class="settings-code-row">
+          <code id="settings-house-code" class="house-code settings-code"></code>
+          <button id="settings-copy-btn" class="settings-copy" type="button">📋 Copiar</button>
+        </div>
+      </div>
+
+      <div class="settings-actions">
+        <a class="settings-btn" href="/casa?elegir=1">🔁 Cambiar de casa</a>
+        <button id="settings-hide-btn" class="settings-btn" type="button" aria-pressed="false">
+          👁️ Ocultar importes
+        </button>
+        <button id="settings-logout-btn" class="settings-btn settings-danger" type="button">
+          🚪 Cerrar sesión
+        </button>
+      </div>
+
+      <p class="settings-note">
+        Los datos de cada casa se guardan solo en este navegador (localStorage).
+        Compartí el código de invitación para que los demás se unan desde este mismo navegador.
+      </p>
+    </section>
+
+    <footer class="foot">
+      Los datos de cada casa se guardan solo en este navegador (localStorage).
+      Compartí el código de invitación para que los demás se unan desde este mismo navegador.
+    </footer>
+  </div>
+
+  <nav class="mobile-nav" aria-label="Navegación principal">
+    <button class="nav-item active" type="button" data-view="resumen">
+      <span class="nav-icon">📊</span>
+      <span>Resumen</span>
+    </button>
+    <button class="nav-item" type="button" data-view="movs">
+      <span class="nav-icon">🧾</span>
+      <span>Movim.</span>
+    </button>
+    <button class="nav-fab" type="button" data-view="add" aria-label="Añadir gasto o ingreso">＋</button>
+    <button class="nav-item" type="button" data-view="fijos">
+      <span class="nav-icon">📌</span>
+      <span>Fijos</span>
+    </button>
+    <button class="nav-item" type="button" data-view="ajustes">
+      <span class="nav-icon">⚙️</span>
+      <span>Ajustes</span>
+    </button>
+  </nav>
+
+  <template id="expense-row-tpl">
+    <li class="expense-item">
+      <span class="cat-dot"></span>
+      <div class="expense-main">
+        <span class="expense-desc"></span>
+        <span class="expense-meta"></span>
+      </div>
+      <span class="expense-amount"></span>
+      <button class="btn-del" type="button" aria-label="Eliminar gasto" title="Eliminar">✕</button>
+    </li>
+  </template>
+
+  <template id="income-row-tpl">
+    <li class="expense-item income-item">
+      <span class="cat-dot income-dot"></span>
+      <div class="expense-main">
+        <span class="expense-desc"></span>
+        <span class="expense-meta"></span>
+      </div>
+      <span class="expense-amount income-amount"></span>
+      <button class="btn-del" type="button" aria-label="Eliminar ingreso" title="Eliminar">✕</button>
+    </li>
+  </template>
+</Layout>
+
+<script>
+  import {
+    addExpense,
+    addFixedCost,
+    addIncome,
+    availableMonths,
+    deleteExpense,
+    deleteFixedCost,
+    deleteIncome,
+    filterByMonth,
+    filterIncomeByMonth,
+    fixedAsExpenses,
+    fixedCostsTotal,
+    incomeTotal,
+    loadExpenses,
+    loadFixedCosts,
+    loadIncome,
+    total,
+    totalsByCategory,
+    totalsByPerson,
+  } from '../lib/store';
+  import { CATEGORIES, INCOME_TYPES, getCategory, type CategoryId } from '../lib/types';
+  import { formatDate, formatMonth, formatMoney, monthKeyOf, todayISO } from '../lib/format';
+  import { getCurrentUser, logout, type User } from '../lib/auth';
+  import { getActiveHouse, type House } from '../lib/house';
+
+  const user = getCurrentUser();
+  if (!user) {
+    window.location.replace('/');
+  }
+  const maybeHouse = user ? getActiveHouse(user) : null;
+  if (user && !maybeHouse) {
+    window.location.replace('/casa');
+  }
+
+  // Si falta sesión o casa ya se disparó la redirección; estos valores solo se
+  // usan mientras la página sigue viva.
+  const currentUser: User = user ?? { username: '', displayName: '' };
+  let house: House = maybeHouse ?? {
+    id: '',
+    name: '',
+    inviteCode: '',
+    owner: '',
+    members: [],
+    createdAt: '',
+  };
+
+  const $ = <T extends HTMLElement>(sel: string): T => {
+    const el = document.querySelector<T>(sel);
+    if (!el) throw new Error(`No se encontró ${sel}`);
+    return el;
+  };
+
+  const form           = $<HTMLFormElement>('#expense-form');
+  const monthSelect    = $<HTMLSelectElement>('#month-select');
+  const list           = $<HTMLUListElement>('#expense-list');
+  const emptyState     = $<HTMLParagraphElement>('#empty-state');
+  const rowTpl         = $<HTMLTemplateElement>('#expense-row-tpl');
+  const incomeRowTpl   = $<HTMLTemplateElement>('#income-row-tpl');
+  const dateInput      = $<HTMLInputElement>('#date');
+  const paidBySelect   = $<HTMLSelectElement>('#paidBy');
+  const personSelect   = $<HTMLSelectElement>('#income-person');
+  const fixedPaidBySel = $<HTMLSelectElement>('#fixed-paidBy');
+  const fixedForm      = $<HTMLFormElement>('#fixed-form');
+  const fixedList      = $<HTMLUListElement>('#fixed-list');
+  const fixedEmpty     = $<HTMLParagraphElement>('#fixed-empty');
+  const fixedTotalEl   = $<HTMLSpanElement>('#fixed-total');
+  const incomeForm     = $<HTMLFormElement>('#income-form');
+  const hideBtn        = $<HTMLButtonElement>('#hide-btn');
+  const logoutBtn      = $<HTMLButtonElement>('#logout-btn');
+  const copyCodeBtn    = $<HTMLButtonElement>('#copy-code-btn');
+  const pageEl         = $<HTMLDivElement>('#page');
+  const settingsHide   = $<HTMLButtonElement>('#settings-hide-btn');
+  const settingsLogout = $<HTMLButtonElement>('#settings-logout-btn');
+  const settingsCopy   = $<HTMLButtonElement>('#settings-copy-btn');
+  const navItems = [...document.querySelectorAll<HTMLButtonElement>('.mobile-nav [data-view]')];
+  const addTabs  = [...document.querySelectorAll<HTMLButtonElement>('.add-tab')];
+
+  const mobileMq = window.matchMedia('(max-width: 820px)');
+  const isMobile = (): boolean => mobileMq.matches;
+
+  const HIDE_KEY = 'ourhouse.hideMoney.v1';
+  let moneyHidden = localStorage.getItem(HIDE_KEY) === '1';
+  const money = (amount: number): string => moneyHidden ? '••••••' : formatMoney(amount);
+
+  let expenses = loadExpenses(house.id);
+  let fixed = loadFixedCosts(house.id);
+  let income = loadIncome(house.id);
+  let selectedMonth = '';
+
+  $<HTMLSpanElement>('#user-greeting').textContent = `Hola, ${currentUser.displayName}`;
+  $<HTMLParagraphElement>('#settings-user').textContent = `Hola, ${currentUser.displayName} 👋`;
+
+  function renderHouseHeader(): void {
+    const n = house.members.length;
+    const membersText = `${n} ${n === 1 ? 'integrante' : 'integrantes'}`;
+    $<HTMLParagraphElement>('#house-tagline').textContent = `🏡 ${house.name} · ${membersText}`;
+    $<HTMLElement>('#house-code').textContent = house.inviteCode;
+    $<HTMLParagraphElement>('#settings-house-name').textContent = `🏡 ${house.name}`;
+    $<HTMLParagraphElement>('#settings-house-members').textContent =
+      `${membersText}: ${house.members.map((m) => m.displayName).join(', ')}`;
+    $<HTMLElement>('#settings-house-code').textContent = house.inviteCode;
+  }
+
+  /* ── Navegación mobile por vistas ── */
+  function setView(view: string): void {
+    pageEl.dataset.view = view;
+    for (const b of navItems) b.classList.toggle('active', b.dataset.view === view);
+    window.scrollTo(0, 0);
+  }
+
+  for (const b of navItems) {
+    b.addEventListener('click', () => setView(b.dataset.view!));
+  }
+
+  for (const tab of addTabs) {
+    tab.addEventListener('click', () => {
+      pageEl.dataset.addMode = tab.dataset.mode;
+      for (const t of addTabs) {
+        t.classList.toggle('active', t === tab);
+        t.setAttribute('aria-selected', String(t === tab));
+      }
+    });
+  }
+
+  /** Rellena los selects de persona con los integrantes de la casa. */
+  function populateMemberSelects(): void {
+    for (const sel of [paidBySelect, personSelect, fixedPaidBySel]) {
+      const previous = sel.value;
+      sel.innerHTML = '';
+      for (const m of house.members) {
+        const opt = document.createElement('option');
+        opt.value = m.displayName;
+        opt.textContent = m.displayName;
+        sel.append(opt);
+      }
+      sel.value = house.members.some((m) => m.displayName === previous)
+        ? previous
+        : currentUser.displayName;
+    }
+  }
+
+  function render(): void {
+    const expMonths = availableMonths(expenses);
+    const incMonthSet = new Set(income.map((i) => monthKeyOf(i.date)));
+    const currentMonth = monthKeyOf(todayISO());
+    const months = [...new Set([...expMonths, ...incMonthSet, currentMonth])].sort((a, b) =>
+      b.localeCompare(a)
+    );
+
+    if (!selectedMonth || !months.includes(selectedMonth)) {
+      selectedMonth = months.includes(currentMonth) ? currentMonth : months[0]!;
+    }
+
+    monthSelect.innerHTML = '';
+    for (const m of months) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = formatMonth(m);
+      opt.selected = m === selectedMonth;
+      monthSelect.append(opt);
+    }
+
+    const monthly = filterByMonth(expenses, selectedMonth);
+    const monthIncome = filterIncomeByMonth(income, selectedMonth);
+    renderSummary(monthly, monthIncome);
+    renderList(monthly, monthIncome);
+    renderFixed();
+  }
+
+  function renderSummary(
+    monthly: ReturnType<typeof filterByMonth>,
+    monthIncome: ReturnType<typeof filterIncomeByMonth>
+  ): void {
+    const fixedVirtual = fixedAsExpenses(fixed, selectedMonth);
+    const combined = [...monthly, ...fixedVirtual];
+    const gastoTotal = total(combined);
+    const ingresoTotal = incomeTotal(monthIncome);
+    const saldo = ingresoTotal - gastoTotal;
+
+    // Saldo card
+    const saldoCard = $<HTMLElement>('#saldo-card');
+    $<HTMLElement>('#saldo-value').textContent = money(saldo);
+    const ingrText = monthIncome.length === 0 ? 'Sin ingresos' : `${money(ingresoTotal)} ingresados`;
+    $<HTMLElement>('#saldo-hint').textContent = `${ingrText} · ${money(gastoTotal)} gastados`;
+    saldoCard.classList.toggle('saldo-negative', saldo < 0);
+
+    // Income month total hint
+    $<HTMLElement>('#income-month-total').textContent =
+      monthIncome.length === 0 ? '' : `${money(ingresoTotal)} este mes`;
+
+    const catList = $<HTMLUListElement>('#by-category');
+    catList.innerHTML = '';
+    const sortedCats = [...totalsByCategory(combined).entries()].sort((a, b) => b[1] - a[1]);
+    if (sortedCats.length === 0) {
+      catList.append(emptyLi());
+    } else {
+      for (const [cat, amount] of sortedCats) {
+        const c = getCategory(cat);
+        catList.append(breakdownLi(`${c.emoji} ${c.label}`, amount, c.color));
+      }
+    }
+
+    const personList = $<HTMLUListElement>('#by-person');
+    personList.innerHTML = '';
+    const sortedPeople = [...totalsByPerson(combined).entries()].sort((a, b) => b[1] - a[1]);
+    if (sortedPeople.length === 0) {
+      personList.append(emptyLi());
+    } else {
+      for (const [person, amount] of sortedPeople) {
+        personList.append(breakdownLi(`👤 ${person}`, amount));
+      }
+    }
+  }
+
+  function breakdownLi(label: string, amount: number, color?: string): HTMLLIElement {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.className = 'b-name';
+    if (color) {
+      const dot = document.createElement('span');
+      dot.className = 'b-dot';
+      dot.style.background = color;
+      name.append(dot);
+    }
+    name.append(document.createTextNode(label));
+    const value = document.createElement('span');
+    value.className = 'b-value';
+    value.textContent = money(amount);
+    li.append(name, value);
+    return li;
+  }
+
+  function emptyLi(): HTMLLIElement {
+    const li = document.createElement('li');
+    li.className = 'b-empty';
+    li.textContent = '—';
+    return li;
+  }
+
+  function renderList(
+    monthly: ReturnType<typeof filterByMonth>,
+    monthIncome: ReturnType<typeof filterIncomeByMonth>
+  ): void {
+    list.innerHTML = '';
+    const totalItems = monthly.length + monthIncome.length;
+    emptyState.hidden = totalItems > 0;
+
+    const expText = monthly.length === 0 ? '' : `${monthly.length} ${monthly.length === 1 ? 'gasto' : 'gastos'}`;
+    const incText = monthIncome.length === 0 ? '' : `${monthIncome.length} ${monthIncome.length === 1 ? 'ingreso' : 'ingresos'}`;
+    $<HTMLElement>('#list-count').textContent = [expText, incText].filter(Boolean).join(' · ');
+
+    type Item =
+      | { kind: 'expense'; date: string; id: string }
+      | { kind: 'income'; date: string; id: string };
+
+    const merged: Item[] = [
+      ...monthly.map((e) => ({ kind: 'expense' as const, date: e.date, id: e.id })),
+      ...monthIncome.map((i) => ({ kind: 'income' as const, date: i.date, id: i.id })),
+    ].sort((a, b) => b.date.localeCompare(a.date));
+
+    const expenseMap = new Map(monthly.map((e) => [e.id, e]));
+    const incomeMap = new Map(monthIncome.map((i) => [i.id, i]));
+
+    for (const item of merged) {
+      if (item.kind === 'expense') {
+        const e = expenseMap.get(item.id)!;
+        const node = rowTpl.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
+        const c = getCategory(e.category);
+        node.querySelector<HTMLSpanElement>('.cat-dot')!.style.background = c.color;
+        node.querySelector<HTMLSpanElement>('.expense-desc')!.textContent = e.description;
+        node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
+          `${c.emoji} ${c.label} · ${formatDate(e.date)} · ${e.paidBy}`;
+        node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = money(e.amount);
+        node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', () => {
+          expenses = deleteExpense(house.id, e.id);
+          render();
+        });
+        list.append(node);
+      } else {
+        const inc = incomeMap.get(item.id)!;
+        const node = incomeRowTpl.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
+        const typeInfo = INCOME_TYPES.find((t) => t.id === inc.type) ?? INCOME_TYPES[0]!;
+        node.querySelector<HTMLSpanElement>('.expense-desc')!.textContent = inc.description;
+        node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
+          `${typeInfo.emoji} ${typeInfo.label} · ${formatDate(inc.date)} · ${inc.person}`;
+        node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = `+${money(inc.amount)}`;
+        node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', () => {
+          income = deleteIncome(house.id, inc.id);
+          render();
+        });
+        list.append(node);
+      }
+    }
+  }
+
+  function renderFixed(): void {
+    fixedTotalEl.textContent = fixed.length === 0 ? '' : `${money(fixedCostsTotal(fixed))} / mes`;
+    fixedList.innerHTML = '';
+    fixedEmpty.hidden = fixed.length > 0;
+
+    for (const f of fixed) {
+      const node = rowTpl.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
+      const c = getCategory(f.category);
+      node.querySelector<HTMLSpanElement>('.cat-dot')!.style.background = c.color;
+      node.querySelector<HTMLSpanElement>('.expense-desc')!.textContent = f.description;
+      node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
+        `${c.emoji} ${c.label} · cada mes · ${f.paidBy}`;
+      node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = money(f.amount);
+      node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', () => {
+        fixed = deleteFixedCost(house.id, f.id);
+        render();
+      });
+      fixedList.append(node);
+    }
+  }
+
+  function bindCopy(btn: HTMLButtonElement, doneText: string): void {
+    const original = btn.textContent;
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(house.inviteCode);
+        btn.textContent = doneText;
+        setTimeout(() => (btn.textContent = original), 1500);
+      } catch {
+        // Sin clipboard: el código ya está visible al lado del botón.
+      }
+    });
+  }
+  bindCopy(copyCodeBtn, '✅');
+  bindCopy(settingsCopy, '✅ Copiado');
+
+  for (const btn of [logoutBtn, settingsLogout]) {
+    btn.addEventListener('click', () => {
+      logout();
+      window.location.replace('/');
+    });
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const data = new FormData(form);
+    const amount = Number.parseFloat(String(data.get('amount')).replace(',', '.'));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      $<HTMLInputElement>('#amount').focus();
+      return;
+    }
+    expenses = addExpense(house.id, {
+      description: String(data.get('description')).trim(),
+      amount: Math.round(amount * 100) / 100,
+      category: String(data.get('category')) as CategoryId,
+      paidBy: String(data.get('paidBy')).trim(),
+      date: String(data.get('date')) || todayISO(),
+    });
+    selectedMonth = monthKeyOf(String(data.get('date')) || todayISO());
+    form.reset();
+    dateInput.value = todayISO();
+    paidBySelect.value = currentUser.displayName;
+    if (isMobile()) {
+      setView('movs');
+    } else {
+      $<HTMLInputElement>('#description').focus();
+    }
+    render();
+  });
+
+  incomeForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const data = new FormData(incomeForm);
+    const amount = Number.parseFloat(String(data.get('amount')).replace(',', '.'));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      $<HTMLInputElement>('#income-amount').focus();
+      return;
+    }
+    income = addIncome(house.id, {
+      description: String(data.get('description')).trim(),
+      amount: Math.round(amount * 100) / 100,
+      type: String(data.get('type')) as 'sueldo' | 'extra',
+      person: String(data.get('person')).trim(),
+      date: String(data.get('date')) || todayISO(),
+    });
+    selectedMonth = monthKeyOf(String(data.get('date')) || todayISO());
+    incomeForm.reset();
+    $<HTMLInputElement>('#income-date').value = todayISO();
+    personSelect.value = currentUser.displayName;
+    if (isMobile()) {
+      setView('movs');
+    } else {
+      $<HTMLInputElement>('#income-description').focus();
+    }
+    render();
+  });
+
+  fixedForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const data = new FormData(fixedForm);
+    const amount = Number.parseFloat(String(data.get('amount')).replace(',', '.'));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      $<HTMLInputElement>('#fixed-amount').focus();
+      return;
+    }
+    fixed = addFixedCost(house.id, {
+      description: String(data.get('description')).trim(),
+      amount: Math.round(amount * 100) / 100,
+      category: String(data.get('category')) as CategoryId,
+      paidBy: String(data.get('paidBy')).trim(),
+    });
+    fixedForm.reset();
+    fixedPaidBySel.value = currentUser.displayName;
+    if (!isMobile()) $<HTMLInputElement>('#fixed-description').focus();
+    render();
+  });
+
+  for (const btn of [hideBtn, settingsHide]) {
+    btn.addEventListener('click', () => {
+      moneyHidden = !moneyHidden;
+      localStorage.setItem(HIDE_KEY, moneyHidden ? '1' : '0');
+      updateHideBtn();
+      render();
+    });
+  }
+
+  function updateHideBtn(): void {
+    hideBtn.setAttribute('aria-pressed', String(moneyHidden));
+    hideBtn.textContent = moneyHidden ? '🙈 Mostrar' : '👁️ Ocultar';
+    hideBtn.title = moneyHidden ? 'Mostrar importes' : 'Ocultar importes';
+    settingsHide.setAttribute('aria-pressed', String(moneyHidden));
+    settingsHide.textContent = moneyHidden ? '🙈 Mostrar importes' : '👁️ Ocultar importes';
+  }
+
+  monthSelect.addEventListener('change', () => {
+    selectedMonth = monthSelect.value;
+    render();
+  });
+
+  // Otro integrante puede estar usando la app en otra pestaña de este navegador.
+  window.addEventListener('storage', () => {
+    const fresh = user ? getActiveHouse(user) : null;
+    if (!fresh) {
+      window.location.replace('/casa');
+      return;
+    }
+    house = fresh;
+    expenses = loadExpenses(house.id);
+    fixed = loadFixedCosts(house.id);
+    income = loadIncome(house.id);
+    renderHouseHeader();
+    populateMemberSelects();
+    render();
+  });
+
+  dateInput.value = todayISO();
+  $<HTMLInputElement>('#income-date').value = todayISO();
+  $<HTMLSelectElement>('#category').value = CATEGORIES[0]!.id;
+  $<HTMLSelectElement>('#fixed-category').value = CATEGORIES[0]!.id;
+  $<HTMLSelectElement>('#income-type').value = INCOME_TYPES[0]!.id;
+  updateHideBtn();
+  renderHouseHeader();
+  populateMemberSelects();
+  render();
+</script>
+
+<style>
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: clamp(1rem, 3vw, 2.5rem);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .logo {
+    font-size: 2.4rem;
+    line-height: 1;
+    filter: drop-shadow(0 6px 12px rgba(99, 102, 241, 0.4));
+  }
+
+  .brand h1 {
+    font-size: 1.7rem;
+  }
+
+  .tagline {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  /* ── Chip de la casa (código de invitación) ── */
+  .house-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.35rem 0.6rem;
+  }
+
+  .house-chip-label {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+
+  .house-code {
+    background: var(--bg);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 0.15rem 0.45rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    font-size: 0.85rem;
+  }
+
+  .btn-copy {
+    background: transparent;
+    border: none;
+    padding: 0.15rem;
+    border-radius: 6px;
+    font-size: 0.95rem;
+  }
+
+  .btn-copy:hover {
+    background: rgba(99, 102, 241, 0.15);
+  }
+
+  .btn-house {
+    color: var(--accent-hover);
+    font-size: 0.85rem;
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .btn-house:hover {
+    text-decoration: underline;
+  }
+
+  .month-pick {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .month-pick label {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .month-pick select {
+    width: auto;
+    min-width: 170px;
+  }
+
+  .user-area {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .user-greeting {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .btn-logout {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.5rem 0.85rem;
+    border-radius: 10px;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .btn-logout:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  .btn-hide {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.5rem 0.85rem;
+    border-radius: 10px;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .btn-hide:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .btn-hide[aria-pressed='true'] {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    box-shadow: var(--shadow);
+  }
+
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+
+  .card-label {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.6rem;
+  }
+
+  /* ── Saldo card ── */
+  .saldo-card {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-color: transparent;
+    transition: background 0.3s ease;
+  }
+
+  .saldo-card.saldo-negative {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  }
+
+  .saldo-card .card-label,
+  .saldo-card .card-hint {
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .total-value {
+    display: block;
+    font-size: 2.1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .card-hint {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  .breakdown {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  /* Los <li> del desglose se crean por JS, sin el atributo de scope de
+     Astro: hay que estilarlos con :global(). */
+  .breakdown :global(li) {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.95rem;
+  }
+
+  .breakdown :global(.b-name) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text);
+  }
+
+  .breakdown :global(.b-dot) {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .breakdown :global(.b-value) {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  .breakdown :global(.b-empty) {
+    color: var(--text-muted);
+  }
+
+  .layout-grid {
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) 1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .form-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .form-card h2,
+  .list-card h2 {
+    font-size: 1.15rem;
+    margin-bottom: 1rem;
+  }
+
+  /* ── Income form card ── */
+  .income-form-card {
+    border-color: rgba(16, 185, 129, 0.35);
+  }
+
+  .income-form-card h2 {
+    color: #10b981;
+  }
+
+  .fixed-help {
+    margin: -0.5rem 0 1rem;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+
+  .fixed-list {
+    margin-top: 1rem;
+  }
+
+  .field {
+    margin-bottom: 0.9rem;
+  }
+
+  .field label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 0.35rem;
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .btn-primary {
+    width: 100%;
+    margin-top: 0.4rem;
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+
+  .btn-primary:hover {
+    background: var(--accent-hover);
+  }
+
+  .btn-primary:active {
+    transform: translateY(1px);
+  }
+
+  .btn-income {
+    width: 100%;
+    margin-top: 0.4rem;
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 10px;
+    background: #10b981;
+    color: white;
+    font-weight: 600;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+
+  .btn-income:hover {
+    background: #059669;
+  }
+
+  .btn-income:active {
+    transform: translateY(1px);
+  }
+
+  .list-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .list-head h2 {
+    margin-bottom: 0;
+  }
+
+  .expense-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .expense-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.75rem 0.85rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    transition: border-color 0.15s ease;
+  }
+
+  .expense-item:hover {
+    border-color: var(--accent);
+  }
+
+  /* ── Income row in movements ── */
+  .income-item {
+    background: rgba(16, 185, 129, 0.06);
+    border-color: rgba(16, 185, 129, 0.25);
+  }
+
+  .income-item:hover {
+    border-color: #10b981;
+  }
+
+  .income-dot {
+    background: #10b981 !important;
+  }
+
+  .income-amount {
+    color: #10b981;
+  }
+
+  .cat-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+
+  .expense-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .expense-desc {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .expense-meta {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+
+  .expense-amount {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .btn-del {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .btn-del:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+  }
+
+  .empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 2rem 1rem;
+  }
+
+  .foot {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    margin-top: 0.5rem;
+  }
+
+  /* ═══════════ Mobile: elementos base (ocultos en desktop) ═══════════ */
+
+  .only-mobile {
+    display: none;
+  }
+
+  /* ── Switch Gasto / Ingreso (vista Añadir) ── */
+  .add-switch {
+    display: none;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.3rem;
+  }
+
+  .add-tab {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0.65rem 0.5rem;
+    border-radius: 9px;
+    font-weight: 600;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .add-tab.active {
+    background: var(--accent);
+    color: white;
+  }
+
+  .add-tab.active[data-mode='ingreso'] {
+    background: #10b981;
+  }
+
+  /* ── Tarjeta de Ajustes (solo mobile) ── */
+  .settings-card {
+    display: none;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+
+  .settings-card h2 {
+    font-size: 1.15rem;
+  }
+
+  .settings-user {
+    margin: -0.75rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .settings-label {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.4rem;
+  }
+
+  .settings-house-name {
+    margin: 0;
+    font-weight: 650;
+    font-size: 1.05rem;
+  }
+
+  .settings-house-members {
+    margin: 0.15rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  .settings-code-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .settings-code {
+    font-size: 1.2rem;
+    padding: 0.45rem 0.8rem;
+  }
+
+  .settings-copy {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    padding: 0.55rem 0.9rem;
+    font-weight: 600;
+  }
+
+  .settings-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .settings-btn {
+    display: block;
+    width: 100%;
+    text-align: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.85rem 1rem;
+    border-radius: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .settings-btn[aria-pressed='true'] {
+    border-color: var(--accent);
+    color: var(--accent-hover);
+  }
+
+  .settings-danger {
+    color: var(--danger);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+
+  .settings-note {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+
+  /* ── Nav inferior ── */
+  .mobile-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: none;
+    grid-template-columns: 1fr 1fr 72px 1fr 1fr;
+    align-items: end;
+    background: rgba(15, 23, 42, 0.92);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid var(--border);
+    padding: 0.4rem 0.4rem calc(0.45rem + env(safe-area-inset-bottom));
+  }
+
+  .nav-item {
+    background: none;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    color: var(--text-muted);
+    font-size: 0.66rem;
+    font-weight: 600;
+    padding: 0.3rem 0;
+    border-radius: 10px;
+    transition: color 0.15s ease;
+  }
+
+  .nav-icon {
+    font-size: 1.35rem;
+    line-height: 1;
+  }
+
+  .nav-item.active {
+    color: var(--accent-hover);
+  }
+
+  .nav-fab {
+    width: 54px;
+    height: 54px;
+    margin: -1.6rem auto 0;
+    border: none;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
+    color: white;
+    font-size: 1.7rem;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 10px 24px rgba(99, 102, 241, 0.5);
+    transition: transform 0.15s ease, outline 0.15s ease;
+  }
+
+  .nav-fab:active {
+    transform: scale(0.94);
+  }
+
+  .nav-fab.active {
+    outline: 3px solid rgba(129, 140, 248, 0.45);
+  }
+
+  /* ═══════════ Mobile: layout por vistas ═══════════ */
+
+  @media (max-width: 820px) {
+    .page {
+      gap: 1rem;
+      padding: 0.9rem 0.9rem calc(92px + env(safe-area-inset-bottom));
+    }
+
+    /* Header compacto: solo marca + selector de mes */
+    .house-chip,
+    .user-area,
+    .btn-hide {
+      display: none;
+    }
+
+    .logo {
+      font-size: 1.9rem;
+    }
+
+    .brand h1 {
+      font-size: 1.25rem;
+    }
+
+    .tagline {
+      font-size: 0.78rem;
+    }
+
+    .header-right {
+      margin-left: auto;
+    }
+
+    .month-pick label {
+      display: none;
+    }
+
+    .month-pick select {
+      min-width: 0;
+    }
+
+    .summary {
+      grid-template-columns: 1fr;
+    }
+
+    .layout-grid {
+      grid-template-columns: 1fr;
+    }
+
+    /* Cada pestaña de la nav muestra una sola vista */
+    .summary,
+    .list-card,
+    .card-expense,
+    .card-income,
+    .card-fixed,
+    .foot,
+    .only-desktop {
+      display: none;
+    }
+
+    .only-mobile {
+      display: inline;
+    }
+
+    .page[data-view='resumen'] .summary {
+      display: grid;
+    }
+
+    .page[data-view='movs'] .list-card {
+      display: block;
+    }
+
+    .page[data-view='add'] .add-switch {
+      display: grid;
+    }
+
+    .page[data-view='add'][data-add-mode='gasto'] .card-expense {
+      display: block;
+    }
+
+    .page[data-view='add'][data-add-mode='ingreso'] .card-income {
+      display: block;
+    }
+
+    .page[data-view='fijos'] .card-fixed {
+      display: block;
+    }
+
+    .page[data-view='ajustes'] .settings-card {
+      display: flex;
+    }
+
+    .mobile-nav {
+      display: grid;
+    }
+
+    /* Ergonomía táctil */
+    .total-value {
+      font-size: 2.5rem;
+    }
+
+    .btn-del {
+      width: 38px;
+      height: 38px;
+      font-size: 1rem;
+    }
+
+    /* Filas de movimientos: en pantallas angostas la descripción
+       envuelve en vez de truncarse. */
+    .expense-item {
+      gap: 0.6rem;
+      padding: 0.7rem;
+    }
+
+    .expense-desc {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
+</style>

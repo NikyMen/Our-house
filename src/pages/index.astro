@@ -1,0 +1,229 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout>
+  <main class="login-page">
+    <div class="login-card">
+      <span class="logo">🏠</span>
+      <h1>OurHouse</h1>
+      <p class="tagline">Ingresos y gastos del hogar</p>
+
+      <div class="tabs" role="tablist">
+        <button id="tab-login" class="tab active" type="button" role="tab" aria-selected="true">
+          Entrar
+        </button>
+        <button id="tab-register" class="tab" type="button" role="tab" aria-selected="false">
+          Crear cuenta
+        </button>
+      </div>
+
+      <form id="login-form" autocomplete="off">
+        <div class="field">
+          <label for="login-user">Usuario</label>
+          <input id="login-user" name="username" type="text" placeholder="tu usuario" required />
+        </div>
+        <div class="field">
+          <label for="login-pass">Contraseña</label>
+          <input id="login-pass" name="password" type="password" placeholder="••••••••" required />
+        </div>
+        <p id="login-error" class="form-error" hidden>Usuario o contraseña incorrectos.</p>
+        <button type="submit" class="btn-primary">Entrar</button>
+      </form>
+
+      <form id="register-form" autocomplete="off" hidden>
+        <div class="field">
+          <label for="reg-user">Usuario</label>
+          <input id="reg-user" name="username" type="text" placeholder="p. ej. nico" required maxlength="20" />
+        </div>
+        <div class="field">
+          <label for="reg-name">Tu nombre</label>
+          <input id="reg-name" name="displayName" type="text" placeholder="Como te ven los demás" required maxlength="40" />
+        </div>
+        <div class="field">
+          <label for="reg-pass">Contraseña</label>
+          <input id="reg-pass" name="password" type="password" placeholder="Mínimo 6 caracteres" required minlength="6" />
+        </div>
+        <p id="register-error" class="form-error" hidden></p>
+        <button type="submit" class="btn-primary">Crear cuenta</button>
+      </form>
+
+      <p class="hint">
+        Las cuentas se guardan solo en este navegador. Después de entrar vas a poder
+        crear tu casa o unirte a una con un código.
+      </p>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  import { getCurrentUser, login, register } from '../lib/auth';
+
+  if (getCurrentUser()) {
+    window.location.replace('/casa');
+  }
+
+  const $ = <T extends HTMLElement>(sel: string): T => document.querySelector<T>(sel)!;
+
+  const tabLogin = $<HTMLButtonElement>('#tab-login');
+  const tabRegister = $<HTMLButtonElement>('#tab-register');
+  const loginForm = $<HTMLFormElement>('#login-form');
+  const registerForm = $<HTMLFormElement>('#register-form');
+  const loginError = $<HTMLParagraphElement>('#login-error');
+  const registerError = $<HTMLParagraphElement>('#register-error');
+
+  function showTab(which: 'login' | 'register'): void {
+    const isLogin = which === 'login';
+    tabLogin.classList.toggle('active', isLogin);
+    tabRegister.classList.toggle('active', !isLogin);
+    tabLogin.setAttribute('aria-selected', String(isLogin));
+    tabRegister.setAttribute('aria-selected', String(!isLogin));
+    loginForm.hidden = !isLogin;
+    registerForm.hidden = isLogin;
+    loginError.hidden = true;
+    registerError.hidden = true;
+    (isLogin ? $<HTMLInputElement>('#login-user') : $<HTMLInputElement>('#reg-user')).focus();
+  }
+
+  tabLogin.addEventListener('click', () => showTab('login'));
+  tabRegister.addEventListener('click', () => showTab('register'));
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = new FormData(loginForm);
+    const user = await login(String(data.get('username')), String(data.get('password')));
+    if (!user) {
+      loginError.hidden = false;
+      const pass = $<HTMLInputElement>('#login-pass');
+      pass.focus();
+      pass.select();
+      return;
+    }
+    window.location.replace('/casa');
+  });
+
+  registerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = new FormData(registerForm);
+    const result = await register(
+      String(data.get('username')),
+      String(data.get('displayName')),
+      String(data.get('password'))
+    );
+    if (typeof result === 'string') {
+      registerError.textContent = result;
+      registerError.hidden = false;
+      return;
+    }
+    window.location.replace('/casa');
+  });
+</script>
+
+<style>
+  .login-page {
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 1.5rem;
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+    box-shadow: var(--shadow);
+    text-align: center;
+  }
+
+  .logo {
+    font-size: 3rem;
+    display: block;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+    margin-top: 0.5rem;
+  }
+
+  .tagline {
+    margin: 0.25rem 0 1.25rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.3rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .tab {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0.55rem 0.5rem;
+    border-radius: 9px;
+    font-weight: 600;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .tab.active {
+    background: var(--accent);
+    color: white;
+  }
+
+  form {
+    text-align: left;
+  }
+
+  .field {
+    margin-bottom: 0.9rem;
+  }
+
+  .field label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 0.35rem;
+  }
+
+  .form-error {
+    color: var(--danger);
+    font-size: 0.85rem;
+    margin: 0 0 0.75rem;
+  }
+
+  .btn-primary {
+    width: 100%;
+    margin-top: 0.6rem;
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+
+  .btn-primary:hover {
+    background: var(--accent-hover);
+  }
+
+  .btn-primary:active {
+    transform: translateY(1px);
+  }
+
+  .hint {
+    margin: 1.25rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+</style>
