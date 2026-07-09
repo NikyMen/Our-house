@@ -10,8 +10,10 @@ module.exports = {
     {
       name: 'ourhouse',
       script: './dist/server/entry.mjs',
+      // IMPORTANTE: modo fork. El modo cluster de pm2 carga la app con
+      // require() y no soporta módulos ESM (.mjs) como el entry de Astro.
+      exec_mode: 'fork',
       node_args: '--env-file=.env',
-      instances: 1,
       autorestart: true,
       max_restarts: 10,
     },
