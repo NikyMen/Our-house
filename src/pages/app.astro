@@ -1,9 +1,24 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import { CATEGORIES, INCOME_TYPES } from '../lib/types';
+import { getActiveHouse, loadExpenses, loadFixedCosts, loadIncome } from '../lib/db';
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect('/');
+const house = await getActiveHouse(user);
+if (!house) return Astro.redirect('/casa');
+
+const [expenses, fixed, income] = await Promise.all([
+  loadExpenses(house.id),
+  loadFixedCosts(house.id),
+  loadIncome(house.id),
+]);
+const initialData = { user, house, expenses, fixed, income };
 ---
 
 <Layout title="OurHouse · App">
+  <script id="__DATA__" type="application/json" is:inline set:html={JSON.stringify(initialData)}
+  ></script>
   <div class="page" id="page" data-view="resumen" data-add-mode="gasto">
     <header class="header">
       <div class="brand">
@@ -213,8 +228,8 @@ import { CATEGORIES, INCOME_TYPES } from '../lib/types';
     </section>
 
     <footer class="foot">
-      Los datos de cada casa se guardan solo en este navegador (localStorage).
-      Compartí el código de invitación para que los demás se unan desde este mismo navegador.
+      Los datos de la casa se guardan en el servidor.
+      Compartí el código de invitación para que los demás se unan desde cualquier dispositivo.
     </footer>
   </div>
 
@@ -265,50 +280,39 @@ import { CATEGORIES, INCOME_TYPES } from '../lib/types';
 
 <script>
   import {
-    addExpense,
-    addFixedCost,
-    addIncome,
+    apiAddExpense,
+    apiAddFixedCost,
+    apiAddIncome,
+    apiDeleteExpense,
+    apiDeleteFixedCost,
+    apiDeleteIncome,
+    apiLogout,
+  } from '../lib/api-client';
+  import {
     availableMonths,
-    deleteExpense,
-    deleteFixedCost,
-    deleteIncome,
     filterByMonth,
     filterIncomeByMonth,
     fixedAsExpenses,
     fixedCostsTotal,
     incomeTotal,
-    loadExpenses,
-    loadFixedCosts,
-    loadIncome,
     total,
     totalsByCategory,
     totalsByPerson,
-  } from '../lib/store';
+  } from '../lib/calc';
   import { CATEGORIES, INCOME_TYPES, getCategory, type CategoryId } from '../lib/types';
+  import type { Expense, FixedCost, House, Income, User } from '../lib/types';
   import { formatDate, formatMonth, formatMoney, monthKeyOf, todayISO } from '../lib/format';
-  import { getCurrentUser, logout, type User } from '../lib/auth';
-  import { getActiveHouse, type House } from '../lib/house';
 
-  const user = getCurrentUser();
-  if (!user) {
-    window.location.replace('/');
-  }
-  const maybeHouse = user ? getActiveHouse(user) : null;
-  if (user && !maybeHouse) {
-    window.location.replace('/casa');
-  }
-
-  // Si falta sesión o casa ya se disparó la redirección; estos valores solo se
-  // usan mientras la página sigue viva.
-  const currentUser: User = user ?? { username: '', displayName: '' };
-  let house: House = maybeHouse ?? {
-    id: '',
-    name: '',
-    inviteCode: '',
-    owner: '',
-    members: [],
-    createdAt: '',
+  // El servidor ya validó sesión y casa activa, e inyectó los datos iniciales.
+  const data = JSON.parse(document.getElementById('__DATA__')!.textContent!) as {
+    user: User;
+    house: House;
+    expenses: Expense[];
+    fixed: FixedCost[];
+    income: Income[];
   };
+  const currentUser = data.user;
+  let house = data.house;
 
   const $ = <T extends HTMLElement>(sel: string): T => {
     const el = document.querySelector<T>(sel);
@@ -348,9 +352,9 @@ import { CATEGORIES, INCOME_TYPES } from '../lib/types';
   let moneyHidden = localStorage.getItem(HIDE_KEY) === '1';
   const money = (amount: number): string => moneyHidden ? '••••••' : formatMoney(amount);
 
-  let expenses = loadExpenses(house.id);
-  let fixed = loadFixedCosts(house.id);
-  let income = loadIncome(house.id);
+  let expenses = data.expenses;
+  let fixed = data.fixed;
+  let income = data.income;
   let selectedMonth = '';
 
   $<HTMLSpanElement>('#user-greeting').textContent = `Hola, ${currentUser.displayName}`;
@@ -537,9 +541,14 @@ import { CATEGORIES, INCOME_TYPES } from '../lib/types';
         node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
           `${c.emoji} ${c.label} · ${formatDate(e.date)} · ${e.paidBy}`;
         node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = money(e.amount);
-        node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', () => {
-          expenses = deleteExpense(house.id, e.id);
-          render();
+        node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', async () => {
+          try {
+            await apiDeleteExpense(e.id);
+            expenses = expenses.filter((x) => x.id !== e.id);
+            render();
+          } catch (err) {
+            alert(err instanceof Error ? err.message : 'No se pudo eliminar el gasto.');
+          }
         });
         list.append(node);
       } else {
@@ -550,9 +559,14 @@ import { CATEGORIES, INCOME_TYPES } from '../lib/types';
         node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
           `${typeInfo.emoji} ${typeInfo.label} · ${formatDate(inc.date)} · ${inc.person}`;
         node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = `+${money(inc.amount)}`;
-        node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', () => {
-          income = deleteIncome(house.id, inc.id);
-          render();
+        node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', async () => {
+          try {
+            await apiDeleteIncome(inc.id);
+            income = income.filter((x) => x.id !== inc.id);
+            render();
+          } catch (err) {
+            alert(err instanceof Error ? err.message : 'No se pudo eliminar el ingreso.');
+          }
         });
         list.append(node);
       }
@@ -572,9 +586,14 @@ import { CATEGORIES, INCOME_TYPES } from '../lib/types';
       node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
         `${c.emoji} ${c.label} · cada mes · ${f.paidBy}`;
       node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = money(f.amount);
-      node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', () => {
-        fixed = deleteFixedCost(house.id, f.id);
-        render();
+      node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', async () => {
+        try {
+          await apiDeleteFixedCost(f.id);
+          fixed = fixed.filter((x) => x.id !== f.id);
+          render();
+        } catch (err) {
+          alert(err instanceof Error ? err.message : 'No se pudo eliminar el costo fijo.');
+        }
       });
       fixedList.append(node);
     }
@@ -596,28 +615,35 @@ import { CATEGORIES, INCOME_TYPES } from '../lib/types';
   bindCopy(settingsCopy, '✅ Copiado');
 
   for (const btn of [logoutBtn, settingsLogout]) {
-    btn.addEventListener('click', () => {
-      logout();
-      window.location.replace('/');
+    btn.addEventListener('click', async () => {
+      await apiLogout();
+      window.location.assign('/');
     });
   }
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const data = new FormData(form);
-    const amount = Number.parseFloat(String(data.get('amount')).replace(',', '.'));
+    const fd = new FormData(form);
+    const amount = Number.parseFloat(String(fd.get('amount')).replace(',', '.'));
     if (!Number.isFinite(amount) || amount <= 0) {
       $<HTMLInputElement>('#amount').focus();
       return;
     }
-    expenses = addExpense(house.id, {
-      description: String(data.get('description')).trim(),
-      amount: Math.round(amount * 100) / 100,
-      category: String(data.get('category')) as CategoryId,
-      paidBy: String(data.get('paidBy')).trim(),
-      date: String(data.get('date')) || todayISO(),
-    });
-    selectedMonth = monthKeyOf(String(data.get('date')) || todayISO());
+    const date = String(fd.get('date')) || todayISO();
+    try {
+      const created = await apiAddExpense({
+        description: String(fd.get('description')).trim(),
+        amount: Math.round(amount * 100) / 100,
+        category: String(fd.get('category')) as CategoryId,
+        paidBy: String(fd.get('paidBy')).trim(),
+        date,
+      });
+      expenses = [...expenses, created];
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'No se pudo añadir el gasto.');
+      return;
+    }
+    selectedMonth = monthKeyOf(date);
     form.reset();
     dateInput.value = todayISO();
     paidBySelect.value = currentUser.displayName;
@@ -629,22 +655,29 @@ import { CATEGORIES, INCOME_TYPES } from '../lib/types';
     render();
   });
 
-  incomeForm.addEventListener('submit', (e) => {
+  incomeForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const data = new FormData(incomeForm);
-    const amount = Number.parseFloat(String(data.get('amount')).replace(',', '.'));
+    const fd = new FormData(incomeForm);
+    const amount = Number.parseFloat(String(fd.get('amount')).replace(',', '.'));
     if (!Number.isFinite(amount) || amount <= 0) {
       $<HTMLInputElement>('#income-amount').focus();
       return;
     }
-    income = addIncome(house.id, {
-      description: String(data.get('description')).trim(),
-      amount: Math.round(amount * 100) / 100,
-      type: String(data.get('type')) as 'sueldo' | 'extra',
-      person: String(data.get('person')).trim(),
-      date: String(data.get('date')) || todayISO(),
-    });
-    selectedMonth = monthKeyOf(String(data.get('date')) || todayISO());
+    const date = String(fd.get('date')) || todayISO();
+    try {
+      const created = await apiAddIncome({
+        description: String(fd.get('description')).trim(),
+        amount: Math.round(amount * 100) / 100,
+        type: String(fd.get('type')) as 'sueldo' | 'extra',
+        person: String(fd.get('person')).trim(),
+        date,
+      });
+      income = [...income, created];
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'No se pudo añadir el ingreso.');
+      return;
+    }
+    selectedMonth = monthKeyOf(date);
     incomeForm.reset();
     $<HTMLInputElement>('#income-date').value = todayISO();
     personSelect.value = currentUser.displayName;
@@ -656,20 +689,26 @@ import { CATEGORIES, INCOME_TYPES } from '../lib/types';
     render();
   });
 
-  fixedForm.addEventListener('submit', (e) => {
+  fixedForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const data = new FormData(fixedForm);
-    const amount = Number.parseFloat(String(data.get('amount')).replace(',', '.'));
+    const fd = new FormData(fixedForm);
+    const amount = Number.parseFloat(String(fd.get('amount')).replace(',', '.'));
     if (!Number.isFinite(amount) || amount <= 0) {
       $<HTMLInputElement>('#fixed-amount').focus();
       return;
     }
-    fixed = addFixedCost(house.id, {
-      description: String(data.get('description')).trim(),
-      amount: Math.round(amount * 100) / 100,
-      category: String(data.get('category')) as CategoryId,
-      paidBy: String(data.get('paidBy')).trim(),
-    });
+    try {
+      const created = await apiAddFixedCost({
+        description: String(fd.get('description')).trim(),
+        amount: Math.round(amount * 100) / 100,
+        category: String(fd.get('category')) as CategoryId,
+        paidBy: String(fd.get('paidBy')).trim(),
+      });
+      fixed = [...fixed, created];
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'No se pudo añadir el costo fijo.');
+      return;
+    }
     fixedForm.reset();
     fixedPaidBySel.value = currentUser.displayName;
     if (!isMobile()) $<HTMLInputElement>('#fixed-description').focus();
@@ -695,22 +734,6 @@ import { CATEGORIES, INCOME_TYPES } from '../lib/types';
 
   monthSelect.addEventListener('change', () => {
     selectedMonth = monthSelect.value;
-    render();
-  });
-
-  // Otro integrante puede estar usando la app en otra pestaña de este navegador.
-  window.addEventListener('storage', () => {
-    const fresh = user ? getActiveHouse(user) : null;
-    if (!fresh) {
-      window.location.replace('/casa');
-      return;
-    }
-    house = fresh;
-    expenses = loadExpenses(house.id);
-    fixed = loadFixedCosts(house.id);
-    income = loadIncome(house.id);
-    renderHouseHeader();
-    populateMemberSelects();
     render();
   });
 

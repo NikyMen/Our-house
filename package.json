@@ -5,17 +5,20 @@
   "description": "App de gastos del hogar con Astro + TypeScript",
   "scripts": {
     "dev": "astro dev",
-    "start": "astro dev",
+    "start": "node ./dist/server/entry.mjs",
     "build": "astro check && astro build",
     "preview": "astro preview",
     "astro": "astro",
     "check": "astro check"
   },
   "dependencies": {
-    "astro": "^5.7.0"
+    "@astrojs/node": "^9.1.0",
+    "astro": "^5.7.0",
+    "pg": "^8.13.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
+    "@types/pg": "^8.11.0",
     "typescript": "^5.8.0"
   },
   "pnpm": {

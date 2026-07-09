@@ -1,8 +1,22 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import { getActiveHouse, housesOf } from '../lib/db';
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect('/');
+
+// Si ya hay una casa activa y no vino a elegir otra, directo a la app.
+const wantsToPick = Astro.url.searchParams.has('elegir');
+const active = await getActiveHouse(user);
+if (!wantsToPick && active) return Astro.redirect('/app');
+
+const houses = await housesOf(user.username);
+const initialData = { user, houses };
 ---
 
 <Layout title="OurHouse · Mi casa">
+  <script id="__DATA__" type="application/json" is:inline set:html={JSON.stringify(initialData)}
+  ></script>
   <main class="casa-page">
     <div class="casa-wrap">
       <header class="casa-header">
@@ -60,8 +74,8 @@ import Layout from '../layouts/Layout.astro';
       </div>
 
       <footer class="foot">
-        Todo se guarda en este navegador (localStorage): para que alguien se una con el
-        código tiene que crear su cuenta en este mismo navegador.
+        Compartí el código de invitación para que otros integrantes se unan a tu casa
+        desde cualquier dispositivo. Los datos se guardan en el servidor.
       </footer>
     </div>
   </main>
@@ -86,30 +100,21 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  import { getCurrentUser, logout, type User } from '../lib/auth';
   import {
-    createHouse,
-    housesOf,
-    joinHouse,
-    leaveHouse,
-    loadHouses,
-    setActiveHouse,
-    getActiveHouse,
-    type House,
-  } from '../lib/house';
-  import { migrateLegacyData } from '../lib/store';
+    apiCreateHouse,
+    apiJoinHouse,
+    apiLeaveHouse,
+    apiLogout,
+    apiSetActiveHouse,
+  } from '../lib/api-client';
+  import type { House, User } from '../lib/types';
 
-  const user = getCurrentUser();
-  if (!user) {
-    window.location.replace('/');
-  }
-  const currentUser: User = user!;
-
-  // Si ya hay una casa activa y no vino a elegir otra, directo a la app.
-  const wantsToPick = new URLSearchParams(window.location.search).has('elegir');
-  if (!wantsToPick && getActiveHouse(currentUser)) {
-    window.location.replace('/app');
-  }
+  const data = JSON.parse(document.getElementById('__DATA__')!.textContent!) as {
+    user: User;
+    houses: House[];
+  };
+  const currentUser = data.user;
+  let houses = data.houses;
 
   const $ = <T extends HTMLElement>(sel: string): T => document.querySelector<T>(sel)!;
 
@@ -123,13 +128,11 @@ import Layout from '../layouts/Layout.astro';
 
   $<HTMLSpanElement>('#user-greeting').textContent = `Hola, ${currentUser.displayName}`;
 
-  function enter(house: House): void {
-    setActiveHouse(currentUser.username, house.id);
-    window.location.replace('/app');
+  function goToApp(): void {
+    window.location.assign('/app');
   }
 
   function render(): void {
-    const houses = housesOf(currentUser.username);
     houseList.innerHTML = '';
     housesEmpty.hidden = houses.length > 0;
 
@@ -152,45 +155,59 @@ import Layout from '../layouts/Layout.astro';
         }
       });
 
-      node.querySelector<HTMLButtonElement>('.btn-enter')!.addEventListener('click', () => enter(h));
-      node.querySelector<HTMLButtonElement>('.btn-leave')!.addEventListener('click', () => {
+      const enterBtn = node.querySelector<HTMLButtonElement>('.btn-enter')!;
+      enterBtn.addEventListener('click', async () => {
+        enterBtn.disabled = true;
+        try {
+          await apiSetActiveHouse(h.id);
+          goToApp();
+        } catch (err) {
+          alert(err instanceof Error ? err.message : 'No se pudo entrar a la casa.');
+          enterBtn.disabled = false;
+        }
+      });
+
+      node.querySelector<HTMLButtonElement>('.btn-leave')!.addEventListener('click', async () => {
         const ok = window.confirm(
-          `¿Salir de "${h.name}"? Si sos el último integrante, la casa y sus datos quedan huérfanos.`
+          `¿Salir de "${h.name}"? Si sos el último integrante, la casa y sus datos se borran.`
         );
         if (!ok) return;
-        leaveHouse(h.id, currentUser.username);
-        render();
+        try {
+          await apiLeaveHouse(h.id);
+          houses = houses.filter((x) => x.id !== h.id);
+          render();
+        } catch (err) {
+          alert(err instanceof Error ? err.message : 'No se pudo abandonar la casa.');
+        }
       });
 
       houseList.append(node);
     }
   }
 
-  createForm.addEventListener('submit', (e) => {
+  createForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const data = new FormData(createForm);
-    const isFirstHouse = loadHouses().length === 0;
-    const result = createHouse(String(data.get('name')), currentUser);
-    if (typeof result === 'string') {
-      createError.textContent = result;
+    const fd = new FormData(createForm);
+    try {
+      await apiCreateHouse(String(fd.get('name')));
+      // createHouse ya la deja como casa activa en el servidor.
+      goToApp();
+    } catch (err) {
+      createError.textContent = err instanceof Error ? err.message : 'No se pudo crear la casa.';
       createError.hidden = false;
-      return;
     }
-    // Si había datos de la versión anterior (sin casas), pasan a esta casa.
-    if (isFirstHouse) migrateLegacyData(result.id);
-    enter(result);
   });
 
-  joinForm.addEventListener('submit', (e) => {
+  joinForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const data = new FormData(joinForm);
-    const result = joinHouse(String(data.get('code')), currentUser);
-    if (typeof result === 'string') {
-      joinError.textContent = result;
+    const fd = new FormData(joinForm);
+    try {
+      await apiJoinHouse(String(fd.get('code')));
+      goToApp();
+    } catch (err) {
+      joinError.textContent = err instanceof Error ? err.message : 'No se pudo unir a la casa.';
       joinError.hidden = false;
-      return;
     }
-    enter(result);
   });
 
   $<HTMLInputElement>('#join-code').addEventListener('input', (e) => {
@@ -199,9 +216,9 @@ import Layout from '../layouts/Layout.astro';
     joinError.hidden = true;
   });
 
-  $<HTMLButtonElement>('#logout-btn').addEventListener('click', () => {
-    logout();
-    window.location.replace('/');
+  $<HTMLButtonElement>('#logout-btn').addEventListener('click', async () => {
+    await apiLogout();
+    window.location.assign('/');
   });
 
   render();

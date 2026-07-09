@@ -57,3 +57,61 @@ export interface Income {
   person: string;
   date: string;
 }
+
+/** Costo fijo: gasto recurrente que aplica todos los meses (sin fecha). */
+export interface FixedCost {
+  id: string;
+  description: string;
+  amount: number;
+  category: CategoryId;
+  paidBy: string;
+}
+
+// ─── Cuentas y casas ───────────────────────────────────────────────────────
+
+export interface User {
+  username: string;
+  displayName: string;
+}
+
+export interface HouseMember {
+  username: string;
+  displayName: string;
+  joinedAt: string;
+}
+
+export interface House {
+  id: string;
+  name: string;
+  /** Código corto para invitar a otros integrantes. */
+  inviteCode: string;
+  /** Username de quien creó la casa. */
+  owner: string;
+  members: HouseMember[];
+  createdAt: string;
+}
+
+// ─── Entradas de creación (lo que manda el cliente al servidor) ──────────────
+
+export interface NewExpense {
+  description: string;
+  amount: number;
+  category: CategoryId;
+  paidBy: string;
+  date: string;
+}
+
+export interface NewFixedCost {
+  description: string;
+  amount: number;
+  category: CategoryId;
+  paidBy: string;
+}
+
+export interface NewIncome {
+  description: string;
+  amount: number;
+  type: IncomeType;
+  person: string;
+  date: string;
+}

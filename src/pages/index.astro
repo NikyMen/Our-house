@@ -1,5 +1,10 @@
 ---
 import Layout from '../layouts/Layout.astro';
+
+// Si ya hay sesión, no mostramos el login: directo a elegir/entrar a la casa.
+if (Astro.locals.user) {
+  return Astro.redirect('/casa');
+}
 ---
 
 <Layout>
@@ -49,19 +54,15 @@ import Layout from '../layouts/Layout.astro';
       </form>
 
       <p class="hint">
-        Las cuentas se guardan solo en este navegador. Después de entrar vas a poder
-        crear tu casa o unirte a una con un código.
+        Tu cuenta y tus datos se guardan en el servidor. Después de entrar vas a poder
+        crear tu casa o unirte a una con un código, desde cualquier dispositivo.
       </p>
     </div>
   </main>
 </Layout>
 
 <script>
-  import { getCurrentUser, login, register } from '../lib/auth';
-
-  if (getCurrentUser()) {
-    window.location.replace('/casa');
-  }
+  import { apiLogin, apiRegister } from '../lib/api-client';
 
   const $ = <T extends HTMLElement>(sel: string): T => document.querySelector<T>(sel)!;
 
@@ -91,31 +92,32 @@ import Layout from '../layouts/Layout.astro';
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = new FormData(loginForm);
-    const user = await login(String(data.get('username')), String(data.get('password')));
-    if (!user) {
+    try {
+      await apiLogin(String(data.get('username')), String(data.get('password')));
+      window.location.assign('/casa');
+    } catch (err) {
+      loginError.textContent = err instanceof Error ? err.message : 'Usuario o contraseña incorrectos.';
       loginError.hidden = false;
       const pass = $<HTMLInputElement>('#login-pass');
       pass.focus();
       pass.select();
-      return;
     }
-    window.location.replace('/casa');
   });
 
   registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = new FormData(registerForm);
-    const result = await register(
-      String(data.get('username')),
-      String(data.get('displayName')),
-      String(data.get('password'))
-    );
-    if (typeof result === 'string') {
-      registerError.textContent = result;
+    try {
+      await apiRegister(
+        String(data.get('username')),
+        String(data.get('displayName')),
+        String(data.get('password'))
+      );
+      window.location.assign('/casa');
+    } catch (err) {
+      registerError.textContent = err instanceof Error ? err.message : 'No se pudo crear la cuenta.';
       registerError.hidden = false;
-      return;
     }
-    window.location.replace('/casa');
   });
 </script>
 
