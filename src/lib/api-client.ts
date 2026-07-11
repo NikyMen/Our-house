@@ -40,7 +40,14 @@ async function patch<T>(url: string, body: unknown): Promise<T> {
 }
 
 async function del<T>(url: string): Promise<T> {
-  const res = await fetch(url, { method: 'DELETE' });
+  // El Content-Type es necesario aunque no haya cuerpo: la protección CSRF de
+  // Astro (checkOrigin) bloquea con 403 los métodos no seguros SIN content-type
+  // cuando el origen no coincide (p. ej. detrás de un proxy https→http). Con un
+  // content-type no "form-like" pasa igual que POST/PUT.
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
   return handle<T>(res);
 }
 
