@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { AppError, addExpense, deleteExpense, getActiveHouse } from '../../lib/db';
+import { AppError, addExpense, deleteExpense, getActiveHouse, updateExpense } from '../../lib/db';
 import { errorResponse, json, parseAmount, readJson, requireUser } from '../../lib/http';
 import type { CategoryId } from '../../lib/types';
 
@@ -13,6 +13,28 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
     const body = await readJson(request);
     const expense = await addExpense(house.id, user.username, {
+      description: String(body.description ?? '').trim(),
+      amount: parseAmount(body.amount),
+      category: String(body.category ?? 'otros') as CategoryId,
+      paidBy: String(body.paidBy ?? '').trim(),
+      date: String(body.date ?? '').trim(),
+    });
+    return json({ expense });
+  } catch (err) {
+    return errorResponse(err);
+  }
+};
+
+export const PUT: APIRoute = async ({ request, locals }) => {
+  try {
+    const user = requireUser(locals);
+    const house = await getActiveHouse(user);
+    if (!house) throw new AppError('No tenés una casa activa.', 409);
+
+    const body = await readJson(request);
+    const id = String(body.id ?? '').trim();
+    if (!id) throw new AppError('Falta el id.');
+    const expense = await updateExpense(house.id, user.username, id, {
       description: String(body.description ?? '').trim(),
       amount: parseAmount(body.amount),
       category: String(body.category ?? 'otros') as CategoryId,

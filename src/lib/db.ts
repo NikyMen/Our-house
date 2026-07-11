@@ -5,6 +5,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type {
   Expense,
   FixedCost,
+  FixedPayment,
   House,
   HouseMember,
   Income,
@@ -101,6 +102,13 @@ export function ensureSchema(): Promise<void> {
           type        text NOT NULL,
           person      text NOT NULL,
           date        text NOT NULL
+        );
+        -- Marca de "pagado" de un costo fijo en un mes concreto. Si existe la
+        -- fila, está pagado; si no, pendiente.
+        CREATE TABLE IF NOT EXISTS fixed_payments (
+          fixed_id text NOT NULL REFERENCES fixed_costs(id) ON DELETE CASCADE,
+          month    text NOT NULL,
+          PRIMARY KEY (fixed_id, month)
         );
         CREATE INDEX IF NOT EXISTS idx_expenses_house ON expenses(house_id);
         CREATE INDEX IF NOT EXISTS idx_fixed_house    ON fixed_costs(house_id);
@@ -443,6 +451,24 @@ export async function addExpense(
   return expense;
 }
 
+export async function updateExpense(
+  houseId: string,
+  username: string,
+  id: string,
+  input: NewExpense
+): Promise<Expense> {
+  await ensureSchema();
+  await assertMember(houseId, username);
+  const res = await pool.query(
+    `UPDATE expenses
+        SET description = $1, amount = $2, category = $3, paid_by = $4, date = $5
+      WHERE id = $6 AND house_id = $7`,
+    [input.description, input.amount, input.category, input.paidBy, input.date, id, houseId]
+  );
+  if (!res.rowCount) throw new AppError('No se encontró el gasto.', 404);
+  return { id, ...input };
+}
+
 export async function deleteExpense(houseId: string, username: string, id: string): Promise<void> {
   await ensureSchema();
   await assertMember(houseId, username);
@@ -491,6 +517,52 @@ export async function deleteFixedCost(houseId: string, username: string, id: str
   await pool.query('DELETE FROM fixed_costs WHERE id = $1 AND house_id = $2', [id, houseId]);
 }
 
+/** Marcas de "pagado" de los costos fijos de una casa (todos los meses). */
+export async function loadFixedPayments(houseId: string): Promise<FixedPayment[]> {
+  await ensureSchema();
+  const res = await pool.query<{ fixed_id: string; month: string }>(
+    `SELECT fp.fixed_id, fp.month
+       FROM fixed_payments fp
+       JOIN fixed_costs f ON f.id = fp.fixed_id
+      WHERE f.house_id = $1`,
+    [houseId]
+  );
+  return res.rows.map((r) => ({ fixedId: r.fixed_id, month: r.month }));
+}
+
+/** Marca o desmarca un costo fijo como pagado en un mes (YYYY-MM). */
+export async function setFixedPaid(
+  houseId: string,
+  username: string,
+  fixedId: string,
+  month: string,
+  paid: boolean
+): Promise<void> {
+  await ensureSchema();
+  await assertMember(houseId, username);
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new AppError('Mes inválido.');
+
+  // El costo fijo debe pertenecer a la casa.
+  const owns = await pool.query('SELECT 1 FROM fixed_costs WHERE id = $1 AND house_id = $2', [
+    fixedId,
+    houseId,
+  ]);
+  if (!owns.rowCount) throw new AppError('No se encontró el costo fijo.', 404);
+
+  if (paid) {
+    await pool.query(
+      `INSERT INTO fixed_payments (fixed_id, month) VALUES ($1, $2)
+         ON CONFLICT (fixed_id, month) DO NOTHING`,
+      [fixedId, month]
+    );
+  } else {
+    await pool.query('DELETE FROM fixed_payments WHERE fixed_id = $1 AND month = $2', [
+      fixedId,
+      month,
+    ]);
+  }
+}
+
 export async function loadIncome(houseId: string): Promise<Income[]> {
   await ensureSchema();
   const res = await pool.query<{
@@ -535,6 +607,24 @@ export async function addIncome(
     ]
   );
   return income;
+}
+
+export async function updateIncome(
+  houseId: string,
+  username: string,
+  id: string,
+  input: NewIncome
+): Promise<Income> {
+  await ensureSchema();
+  await assertMember(houseId, username);
+  const res = await pool.query(
+    `UPDATE income
+        SET description = $1, amount = $2, type = $3, person = $4, date = $5
+      WHERE id = $6 AND house_id = $7`,
+    [input.description, input.amount, input.type, input.person, input.date, id, houseId]
+  );
+  if (!res.rowCount) throw new AppError('No se encontró el ingreso.', 404);
+  return { id, ...input };
 }
 
 export async function deleteIncome(houseId: string, username: string, id: string): Promise<void> {

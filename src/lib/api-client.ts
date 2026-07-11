@@ -21,6 +21,24 @@ async function post<T>(url: string, body: unknown): Promise<T> {
   return handle<T>(res);
 }
 
+async function put<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return handle<T>(res);
+}
+
+async function patch<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return handle<T>(res);
+}
+
 async function del<T>(url: string): Promise<T> {
   const res = await fetch(url, { method: 'DELETE' });
   return handle<T>(res);
@@ -87,6 +105,10 @@ export function apiAddExpense(input: NewExpense): Promise<Expense> {
   return post<{ expense: Expense }>('/api/expenses', input).then((r) => r.expense);
 }
 
+export function apiUpdateExpense(id: string, input: NewExpense): Promise<Expense> {
+  return put<{ expense: Expense }>('/api/expenses', { id, ...input }).then((r) => r.expense);
+}
+
 export function apiDeleteExpense(id: string): Promise<unknown> {
   return del(`/api/expenses?id=${encodeURIComponent(id)}`);
 }
@@ -99,8 +121,16 @@ export function apiDeleteFixedCost(id: string): Promise<unknown> {
   return del(`/api/fixed?id=${encodeURIComponent(id)}`);
 }
 
+export function apiSetFixedPaid(fixedId: string, month: string, paid: boolean): Promise<unknown> {
+  return patch('/api/fixed', { fixedId, month, paid });
+}
+
 export function apiAddIncome(input: NewIncome): Promise<Income> {
   return post<{ income: Income }>('/api/income', input).then((r) => r.income);
+}
+
+export function apiUpdateIncome(id: string, input: NewIncome): Promise<Income> {
+  return put<{ income: Income }>('/api/income', { id, ...input }).then((r) => r.income);
 }
 
 export function apiDeleteIncome(id: string): Promise<unknown> {

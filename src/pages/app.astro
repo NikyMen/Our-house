@@ -1,19 +1,20 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import { CATEGORIES, INCOME_TYPES } from '../lib/types';
-import { getActiveHouse, loadExpenses, loadFixedCosts, loadIncome } from '../lib/db';
+import { getActiveHouse, loadExpenses, loadFixedCosts, loadFixedPayments, loadIncome } from '../lib/db';
 
 const user = Astro.locals.user;
 if (!user) return Astro.redirect('/');
 const house = await getActiveHouse(user);
 if (!house) return Astro.redirect('/casa');
 
-const [expenses, fixed, income] = await Promise.all([
+const [expenses, fixed, income, fixedPaid] = await Promise.all([
   loadExpenses(house.id),
   loadFixedCosts(house.id),
   loadIncome(house.id),
+  loadFixedPayments(house.id),
 ]);
-const initialData = { user, house, expenses, fixed, income };
+const initialData = { user, house, expenses, fixed, income, fixedPaid };
 ---
 
 <Layout title="OurHouse · App">
@@ -37,7 +38,9 @@ const initialData = { user, house, expenses, fixed, income };
         </div>
         <div class="month-pick">
           <label for="month-select">Mes</label>
+          <button id="month-prev" class="month-arrow" type="button" aria-label="Mes anterior">‹</button>
           <select id="month-select" aria-label="Seleccionar mes"></select>
+          <button id="month-next" class="month-arrow" type="button" aria-label="Mes siguiente">›</button>
         </div>
         <button id="hide-btn" class="btn-hide" type="button" aria-pressed="false" title="Ocultar importes">
           👁️ Ocultar
@@ -51,13 +54,25 @@ const initialData = { user, house, expenses, fixed, income };
 
     <nav class="desktop-nav" role="tablist" aria-label="Secciones principales">
       <button type="button" class="desktop-tab active" data-dview="gastos" role="tab" aria-selected="true">
-        💸 Gastos
+        <span class="dtab-icon">💸</span>
+        <span class="dtab-text">
+          <span class="dtab-label">Gastos</span>
+          <span class="dtab-sub" id="dtab-sub-gastos">—</span>
+        </span>
       </button>
       <button type="button" class="desktop-tab" data-dview="ingresos" role="tab" aria-selected="false">
-        💰 Ingresos
+        <span class="dtab-icon">💰</span>
+        <span class="dtab-text">
+          <span class="dtab-label">Ingresos</span>
+          <span class="dtab-sub" id="dtab-sub-ingresos">—</span>
+        </span>
       </button>
       <button type="button" class="desktop-tab" data-dview="fijos" role="tab" aria-selected="false">
-        📌 Costos fijos
+        <span class="dtab-icon">📌</span>
+        <span class="dtab-text">
+          <span class="dtab-label">Costos fijos</span>
+          <span class="dtab-sub" id="dtab-sub-fijos">—</span>
+        </span>
       </button>
     </nav>
 
@@ -265,6 +280,59 @@ const initialData = { user, house, expenses, fixed, income };
     </button>
   </nav>
 
+  <div class="modal-backdrop" id="edit-modal" hidden>
+    <div class="modal card" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+      <div class="modal-head">
+        <h2 id="edit-modal-title">Editar movimiento</h2>
+        <button class="modal-close" id="edit-close" type="button" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="edit-form" autocomplete="off">
+        <div class="field">
+          <label for="edit-description">Descripción</label>
+          <input id="edit-description" name="description" type="text" required maxlength="80" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="edit-amount">Importe ($)</label>
+            <input id="edit-amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0,00" required />
+          </div>
+          <div class="field">
+            <label for="edit-date">Fecha</label>
+            <input id="edit-date" name="date" type="date" required />
+          </div>
+        </div>
+        <div class="field-row" id="edit-expense-fields">
+          <div class="field">
+            <label for="edit-category">Categoría</label>
+            <select id="edit-category" name="category">
+              {CATEGORIES.map((c) => <option value={c.id}>{c.emoji} {c.label}</option>)}
+            </select>
+          </div>
+          <div class="field">
+            <label for="edit-paidBy">Pagado por</label>
+            <select id="edit-paidBy" name="paidBy"></select>
+          </div>
+        </div>
+        <div class="field-row" id="edit-income-fields" hidden>
+          <div class="field">
+            <label for="edit-type">Tipo</label>
+            <select id="edit-type" name="type">
+              {INCOME_TYPES.map((t) => <option value={t.id}>{t.emoji} {t.label}</option>)}
+            </select>
+          </div>
+          <div class="field">
+            <label for="edit-person">Persona</label>
+            <select id="edit-person" name="person"></select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-delete" id="edit-delete">🗑️ Eliminar</button>
+          <button type="submit" class="btn-primary" id="edit-save">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <template id="expense-row-tpl">
     <li class="expense-item">
       <span class="cat-dot"></span>
@@ -288,6 +356,19 @@ const initialData = { user, house, expenses, fixed, income };
       <button class="btn-del" type="button" aria-label="Eliminar ingreso" title="Eliminar">✕</button>
     </li>
   </template>
+
+  <template id="fixed-row-tpl">
+    <li class="expense-item fixed-item">
+      <span class="cat-dot"></span>
+      <div class="expense-main">
+        <span class="expense-desc"></span>
+        <span class="expense-meta"></span>
+      </div>
+      <button class="paid-toggle" type="button" aria-pressed="false"></button>
+      <span class="expense-amount"></span>
+      <button class="btn-del" type="button" aria-label="Eliminar costo fijo" title="Eliminar">✕</button>
+    </li>
+  </template>
 </Layout>
 
 <script>
@@ -298,6 +379,9 @@ const initialData = { user, house, expenses, fixed, income };
     apiDeleteExpense,
     apiDeleteFixedCost,
     apiDeleteIncome,
+    apiUpdateExpense,
+    apiUpdateIncome,
+    apiSetFixedPaid,
     apiLogout,
   } from '../lib/api-client';
   import {
@@ -312,8 +396,8 @@ const initialData = { user, house, expenses, fixed, income };
     totalsByPerson,
   } from '../lib/calc';
   import { CATEGORIES, INCOME_TYPES, SHARED_PAYER, getCategory, type CategoryId } from '../lib/types';
-  import type { Expense, FixedCost, House, Income, User } from '../lib/types';
-  import { formatDate, formatMonth, formatMoney, monthKeyOf, todayISO } from '../lib/format';
+  import type { Expense, FixedCost, FixedPayment, House, Income, User } from '../lib/types';
+  import { formatDate, formatMonth, formatMoney, monthKeyOf, shiftMonth, todayISO } from '../lib/format';
 
   // El servidor ya validó sesión y casa activa, e inyectó los datos iniciales.
   const data = JSON.parse(document.getElementById('__DATA__')!.textContent!) as {
@@ -322,6 +406,7 @@ const initialData = { user, house, expenses, fixed, income };
     expenses: Expense[];
     fixed: FixedCost[];
     income: Income[];
+    fixedPaid: FixedPayment[];
   };
   const currentUser = data.user;
   let house = data.house;
@@ -338,6 +423,9 @@ const initialData = { user, house, expenses, fixed, income };
   const emptyState     = $<HTMLParagraphElement>('#empty-state');
   const rowTpl         = $<HTMLTemplateElement>('#expense-row-tpl');
   const incomeRowTpl   = $<HTMLTemplateElement>('#income-row-tpl');
+  const fixedRowTpl    = $<HTMLTemplateElement>('#fixed-row-tpl');
+  const monthPrev      = $<HTMLButtonElement>('#month-prev');
+  const monthNext      = $<HTMLButtonElement>('#month-next');
   const dateInput      = $<HTMLInputElement>('#date');
   const paidBySelect   = $<HTMLSelectElement>('#paidBy');
   const personSelect   = $<HTMLSelectElement>('#income-person');
@@ -358,6 +446,25 @@ const initialData = { user, house, expenses, fixed, income };
   const addTabs  = [...document.querySelectorAll<HTMLButtonElement>('.add-tab')];
   const desktopTabs = [...document.querySelectorAll<HTMLButtonElement>('.desktop-tab')];
 
+  // ── Popup de edición ──
+  const editModal      = $<HTMLDivElement>('#edit-modal');
+  const editForm       = $<HTMLFormElement>('#edit-form');
+  const editTitle      = $<HTMLHeadingElement>('#edit-modal-title');
+  const editClose      = $<HTMLButtonElement>('#edit-close');
+  const editDelete     = $<HTMLButtonElement>('#edit-delete');
+  const editDesc       = $<HTMLInputElement>('#edit-description');
+  const editAmount     = $<HTMLInputElement>('#edit-amount');
+  const editDate       = $<HTMLInputElement>('#edit-date');
+  const editCategory   = $<HTMLSelectElement>('#edit-category');
+  const editPaidBy     = $<HTMLSelectElement>('#edit-paidBy');
+  const editType       = $<HTMLSelectElement>('#edit-type');
+  const editPerson     = $<HTMLSelectElement>('#edit-person');
+  const editExpenseFld = $<HTMLDivElement>('#edit-expense-fields');
+  const editIncomeFld  = $<HTMLDivElement>('#edit-income-fields');
+
+  /** Movimiento que se está editando en el popup (o null si está cerrado). */
+  let editing: { kind: 'expense' | 'income'; id: string } | null = null;
+
   const mobileMq = window.matchMedia('(max-width: 820px)');
   const isMobile = (): boolean => mobileMq.matches;
 
@@ -368,6 +475,8 @@ const initialData = { user, house, expenses, fixed, income };
   let expenses = data.expenses;
   let fixed = data.fixed;
   let income = data.income;
+  // Marcas de "pagado" como set de claves `${fixedId}:${month}`.
+  const fixedPaid = new Set(data.fixedPaid.map((p) => `${p.fixedId}:${p.month}`));
   let selectedMonth = '';
   /** Sección activa en modo computadora: gastos | ingresos | fijos. */
   let desktopView = 'gastos';
@@ -426,7 +535,7 @@ const initialData = { user, house, expenses, fixed, income };
 
   /** Rellena los selects de persona con los integrantes de la casa. */
   function populateMemberSelects(): void {
-    for (const sel of [paidBySelect, personSelect, fixedPaidBySel]) {
+    for (const sel of [paidBySelect, personSelect, fixedPaidBySel, editPaidBy, editPerson]) {
       const previous = sel.value;
       sel.innerHTML = '';
       for (const m of house.members) {
@@ -437,7 +546,7 @@ const initialData = { user, house, expenses, fixed, income };
       }
       // En "Pagado por" (gastos y costos fijos) se puede repartir el importe
       // en partes iguales entre todos los integrantes. En ingresos no aplica.
-      if (sel === paidBySelect || sel === fixedPaidBySel) {
+      if (sel === paidBySelect || sel === fixedPaidBySel || sel === editPaidBy) {
         const shared = document.createElement('option');
         shared.value = SHARED_PAYER;
         shared.textContent = `🤝 ${SHARED_PAYER} (partes iguales)`;
@@ -453,9 +562,9 @@ const initialData = { user, house, expenses, fixed, income };
     const expMonths = availableMonths(expenses);
     const incMonthSet = new Set(income.map((i) => monthKeyOf(i.date)));
     const currentMonth = monthKeyOf(todayISO());
-    const months = [...new Set([...expMonths, ...incMonthSet, currentMonth])].sort((a, b) =>
-      b.localeCompare(a)
-    );
+    const months = [
+      ...new Set([...expMonths, ...incMonthSet, currentMonth, selectedMonth].filter(Boolean)),
+    ].sort((a, b) => b.localeCompare(a));
 
     if (!selectedMonth || !months.includes(selectedMonth)) {
       selectedMonth = months.includes(currentMonth) ? currentMonth : months[0]!;
@@ -497,6 +606,11 @@ const initialData = { user, house, expenses, fixed, income };
     // Income month total hint
     $<HTMLElement>('#income-month-total').textContent =
       monthIncome.length === 0 ? '' : `${money(ingresoTotal)} este mes`;
+
+    // Totales en vivo de la barra de navegación desktop
+    $<HTMLElement>('#dtab-sub-gastos').textContent = money(total(monthly));
+    $<HTMLElement>('#dtab-sub-ingresos').textContent = money(ingresoTotal);
+    $<HTMLElement>('#dtab-sub-fijos').textContent = `${money(fixedCostsTotal(fixed))}/mes`;
 
     const catList = $<HTMLUListElement>('#by-category');
     catList.innerHTML = '';
@@ -588,15 +702,8 @@ const initialData = { user, house, expenses, fixed, income };
         node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
           `${c.emoji} ${c.label} · ${formatDate(e.date)} · ${payerLabel}`;
         node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = money(e.amount);
-        node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', async () => {
-          try {
-            await apiDeleteExpense(e.id);
-            expenses = expenses.filter((x) => x.id !== e.id);
-            render();
-          } catch (err) {
-            alert(err instanceof Error ? err.message : 'No se pudo eliminar el gasto.');
-          }
-        });
+        node.querySelector<HTMLButtonElement>('.btn-del')!.remove();
+        makeClickableRow(node, () => openEditExpense(e));
         list.append(node);
       } else {
         const inc = incomeMap.get(item.id)!;
@@ -606,27 +713,24 @@ const initialData = { user, house, expenses, fixed, income };
         node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
           `${typeInfo.emoji} ${typeInfo.label} · ${formatDate(inc.date)} · ${inc.person}`;
         node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = `+${money(inc.amount)}`;
-        node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', async () => {
-          try {
-            await apiDeleteIncome(inc.id);
-            income = income.filter((x) => x.id !== inc.id);
-            render();
-          } catch (err) {
-            alert(err instanceof Error ? err.message : 'No se pudo eliminar el ingreso.');
-          }
-        });
+        node.querySelector<HTMLButtonElement>('.btn-del')!.remove();
+        makeClickableRow(node, () => openEditIncome(inc));
         list.append(node);
       }
     }
   }
 
   function renderFixed(): void {
-    fixedTotalEl.textContent = fixed.length === 0 ? '' : `${money(fixedCostsTotal(fixed))} / mes`;
+    const paidCount = fixed.filter((f) => fixedPaid.has(`${f.id}:${selectedMonth}`)).length;
+    fixedTotalEl.textContent =
+      fixed.length === 0
+        ? ''
+        : `${money(fixedCostsTotal(fixed))} / mes · ${paidCount}/${fixed.length} pagados`;
     fixedList.innerHTML = '';
     fixedEmpty.hidden = fixed.length > 0;
 
     for (const f of fixed) {
-      const node = rowTpl.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
+      const node = fixedRowTpl.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
       const c = getCategory(f.category);
       node.querySelector<HTMLSpanElement>('.cat-dot')!.style.background = c.color;
       node.querySelector<HTMLSpanElement>('.expense-desc')!.textContent = f.description;
@@ -634,6 +738,34 @@ const initialData = { user, house, expenses, fixed, income };
       node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
         `${c.emoji} ${c.label} · cada mes · ${fPayerLabel}`;
       node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = money(f.amount);
+
+      const toggle = node.querySelector<HTMLButtonElement>('.paid-toggle')!;
+      const applyToggleState = (paid: boolean): void => {
+        toggle.classList.toggle('is-paid', paid);
+        toggle.setAttribute('aria-pressed', String(paid));
+        toggle.textContent = paid ? '✅ Pagado' : '⭕ Pendiente';
+        node.classList.toggle('fixed-paid', paid);
+      };
+      applyToggleState(fixedPaid.has(`${f.id}:${selectedMonth}`));
+
+      toggle.addEventListener('click', async () => {
+        const key = `${f.id}:${selectedMonth}`;
+        const nextPaid = !fixedPaid.has(key);
+        // Actualización optimista; se revierte si la API falla.
+        applyToggleState(nextPaid);
+        toggle.disabled = true;
+        try {
+          await apiSetFixedPaid(f.id, selectedMonth, nextPaid);
+          if (nextPaid) fixedPaid.add(key);
+          else fixedPaid.delete(key);
+          renderFixed();
+        } catch (err) {
+          applyToggleState(!nextPaid);
+          toggle.disabled = false;
+          alert(err instanceof Error ? err.message : 'No se pudo cambiar el estado de pago.');
+        }
+      });
+
       node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', async () => {
         try {
           await apiDeleteFixedCost(f.id);
@@ -646,6 +778,129 @@ const initialData = { user, house, expenses, fixed, income };
       fixedList.append(node);
     }
   }
+
+  /* ── Popup de edición / eliminación de movimientos ── */
+  function makeClickableRow(node: HTMLLIElement, onOpen: () => void): void {
+    node.classList.add('is-clickable');
+    node.setAttribute('role', 'button');
+    node.tabIndex = 0;
+    node.title = 'Tocar para editar o eliminar';
+    node.addEventListener('click', onOpen);
+    node.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        onOpen();
+      }
+    });
+  }
+
+  function openEditModal(): void {
+    editModal.hidden = false;
+    document.body.classList.add('modal-open');
+    editDesc.focus();
+  }
+
+  function closeEditModal(): void {
+    editModal.hidden = true;
+    document.body.classList.remove('modal-open');
+    editing = null;
+  }
+
+  function openEditExpense(e: Expense): void {
+    editing = { kind: 'expense', id: e.id };
+    editTitle.textContent = 'Editar gasto';
+    editExpenseFld.hidden = false;
+    editIncomeFld.hidden = true;
+    editDesc.value = e.description;
+    editAmount.value = String(e.amount);
+    editDate.value = e.date;
+    editCategory.value = e.category;
+    editPaidBy.value = e.paidBy;
+    openEditModal();
+  }
+
+  function openEditIncome(inc: Income): void {
+    editing = { kind: 'income', id: inc.id };
+    editTitle.textContent = 'Editar ingreso';
+    editExpenseFld.hidden = true;
+    editIncomeFld.hidden = false;
+    editDesc.value = inc.description;
+    editAmount.value = String(inc.amount);
+    editDate.value = inc.date;
+    editType.value = inc.type;
+    editPerson.value = inc.person;
+    openEditModal();
+  }
+
+  editClose.addEventListener('click', closeEditModal);
+  editModal.addEventListener('click', (ev) => {
+    if (ev.target === editModal) closeEditModal();
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !editModal.hidden) closeEditModal();
+  });
+
+  editForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (!editing) return;
+    const fd = new FormData(editForm);
+    const amount = Number.parseFloat(String(fd.get('amount')).replace(',', '.'));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      editAmount.focus();
+      return;
+    }
+    const description = String(fd.get('description')).trim();
+    const date = String(fd.get('date')) || todayISO();
+    const rounded = Math.round(amount * 100) / 100;
+    try {
+      if (editing.kind === 'expense') {
+        const updated = await apiUpdateExpense(editing.id, {
+          description,
+          amount: rounded,
+          category: String(fd.get('category')) as CategoryId,
+          paidBy: String(fd.get('paidBy')).trim(),
+          date,
+        });
+        expenses = expenses.map((x) => (x.id === updated.id ? updated : x));
+      } else {
+        const updated = await apiUpdateIncome(editing.id, {
+          description,
+          amount: rounded,
+          type: String(fd.get('type')) as 'sueldo' | 'extra',
+          person: String(fd.get('person')).trim(),
+          date,
+        });
+        income = income.map((x) => (x.id === updated.id ? updated : x));
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'No se pudo guardar el cambio.');
+      return;
+    }
+    selectedMonth = monthKeyOf(date);
+    closeEditModal();
+    render();
+  });
+
+  editDelete.addEventListener('click', async () => {
+    if (!editing) return;
+    const { kind, id } = editing;
+    const label = kind === 'expense' ? 'este gasto' : 'este ingreso';
+    if (!confirm(`¿Eliminar ${label}? No se puede deshacer.`)) return;
+    try {
+      if (kind === 'expense') {
+        await apiDeleteExpense(id);
+        expenses = expenses.filter((x) => x.id !== id);
+      } else {
+        await apiDeleteIncome(id);
+        income = income.filter((x) => x.id !== id);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'No se pudo eliminar el movimiento.');
+      return;
+    }
+    closeEditModal();
+    render();
+  });
 
   function bindCopy(btn: HTMLButtonElement, doneText: string): void {
     const original = btn.textContent;
@@ -785,6 +1040,15 @@ const initialData = { user, house, expenses, fixed, income };
     render();
   });
 
+  monthPrev.addEventListener('click', () => {
+    selectedMonth = shiftMonth(selectedMonth || monthKeyOf(todayISO()), -1);
+    render();
+  });
+  monthNext.addEventListener('click', () => {
+    selectedMonth = shiftMonth(selectedMonth || monthKeyOf(todayISO()), 1);
+    render();
+  });
+
   dateInput.value = todayISO();
   $<HTMLInputElement>('#income-date').value = todayISO();
   $<HTMLSelectElement>('#category').value = CATEGORIES[0]!.id;
@@ -798,7 +1062,7 @@ const initialData = { user, house, expenses, fixed, income };
 
 <style>
   .page {
-    max-width: 1080px;
+    max-width: 1140px;
     margin: 0 auto;
     padding: clamp(1rem, 3vw, 2.5rem);
     display: flex;
@@ -908,6 +1172,26 @@ const initialData = { user, house, expenses, fixed, income };
     min-width: 170px;
   }
 
+  .month-arrow {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 1.2rem;
+    line-height: 1;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .month-arrow:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
   .user-area {
     display: flex;
     align-items: center;
@@ -960,43 +1244,108 @@ const initialData = { user, house, expenses, fixed, income };
     box-shadow: var(--shadow);
   }
 
-  /* ── Navegación desktop: Gastos / Ingresos / Costos fijos ── */
+  /* ── Navegación desktop: Gastos / Ingresos / Costos fijos ──
+     Control segmentado a todo el ancho, protagonista de la página. */
   .desktop-nav {
-    display: flex;
-    gap: 0.4rem;
-    width: fit-content;
-    background: var(--surface-2);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    width: 100%;
+    background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 0.3rem;
+    border-radius: 18px;
+    padding: 0.5rem;
+    box-shadow: var(--shadow);
   }
 
   .desktop-tab {
-    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.85rem;
+    border: 1px solid transparent;
     background: transparent;
     color: var(--text-muted);
-    padding: 0.6rem 1.5rem;
-    border-radius: 9px;
+    padding: 0.95rem 1.35rem;
+    border-radius: 13px;
     font-weight: 600;
-    font-size: 0.95rem;
-    transition: background 0.15s ease, color 0.15s ease;
+    text-align: left;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease,
+      box-shadow 0.18s ease, transform 0.05s ease;
+  }
+
+  .dtab-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+    filter: grayscale(0.35);
+    transition: filter 0.18s ease, transform 0.18s ease;
+  }
+
+  .dtab-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .dtab-label {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .dtab-sub {
+    font-size: 0.85rem;
+    font-weight: 600;
+    opacity: 0.72;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .desktop-tab:hover {
     color: var(--text);
+    background: var(--surface-2);
+    border-color: var(--border);
+  }
+
+  .desktop-tab:hover .dtab-icon {
+    filter: grayscale(0);
+    transform: scale(1.06);
+  }
+
+  .desktop-tab:active {
+    transform: translateY(1px);
   }
 
   .desktop-tab.active {
-    background: var(--accent);
     color: white;
+    border-color: transparent;
+  }
+
+  .desktop-tab.active .dtab-icon {
+    filter: grayscale(0);
+  }
+
+  .desktop-tab.active .dtab-sub {
+    opacity: 0.9;
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  .desktop-tab.active[data-dview='gastos'] {
+    background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
+    box-shadow: 0 10px 24px -8px rgba(99, 102, 241, 0.65);
   }
 
   .desktop-tab.active[data-dview='ingresos'] {
-    background: #10b981;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 10px 24px -8px rgba(16, 185, 129, 0.6);
   }
 
   .desktop-tab.active[data-dview='fijos'] {
-    background: #f97316;
+    background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+    box-shadow: 0 10px 24px -8px rgba(249, 115, 22, 0.6);
   }
 
   .summary {
@@ -1101,6 +1450,31 @@ const initialData = { user, house, expenses, fixed, income };
   .list-card h2 {
     font-size: 1.15rem;
     margin-bottom: 1rem;
+  }
+
+  /* ── Acento de color por sección: cinta superior que combina con la nav ── */
+  .form-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .form-card::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+  }
+
+  .card-expense::before {
+    background: linear-gradient(90deg, var(--accent), #8b5cf6);
+  }
+
+  .card-income::before {
+    background: linear-gradient(90deg, #10b981, #059669);
+  }
+
+  .card-fixed::before {
+    background: linear-gradient(90deg, #fb923c, #f97316);
   }
 
   /* ── Income form card ── */
@@ -1208,11 +1582,13 @@ const initialData = { user, house, expenses, fixed, income };
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: 12px;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   }
 
   .expense-item:hover {
     border-color: var(--accent);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px -10px rgba(0, 0, 0, 0.6);
   }
 
   /* ── Income row in movements ── */
@@ -1237,6 +1613,44 @@ const initialData = { user, house, expenses, fixed, income };
     width: 12px;
     height: 12px;
     border-radius: 50%;
+  }
+
+  /* ── Fila de costo fijo: incluye el toggle de "pagado" ── */
+  .fixed-item {
+    grid-template-columns: auto 1fr auto auto auto;
+  }
+
+  .fixed-item.fixed-paid {
+    border-color: rgba(16, 185, 129, 0.4);
+    background: rgba(16, 185, 129, 0.06);
+  }
+
+  .paid-toggle {
+    white-space: nowrap;
+    padding: 0.4rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+
+  .paid-toggle:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .paid-toggle.is-paid {
+    border-color: rgba(16, 185, 129, 0.55);
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+  }
+
+  .paid-toggle:disabled {
+    opacity: 0.6;
+    cursor: progress;
   }
 
   .expense-main {
@@ -1292,6 +1706,111 @@ const initialData = { user, house, expenses, fixed, income };
     color: var(--text-muted);
     font-size: 0.82rem;
     margin-top: 0.5rem;
+  }
+
+  /* ── Fila de movimiento clickeable (abre el popup de edición) ── */
+  .expense-item.is-clickable {
+    cursor: pointer;
+  }
+
+  .expense-item.is-clickable::after {
+    content: '›';
+    color: var(--text-muted);
+    font-size: 1.4rem;
+    line-height: 1;
+    justify-self: end;
+    transition: color 0.15s ease;
+  }
+
+  .expense-item.is-clickable:hover::after,
+  .expense-item.is-clickable:focus-visible::after {
+    color: var(--accent);
+  }
+
+  .expense-item.is-clickable:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* ── Popup de edición de movimientos ── */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(2, 6, 23, 0.65);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+
+  .modal-backdrop[hidden] {
+    display: none;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 440px;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+  }
+
+  .modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+
+  .modal-head h2 {
+    font-size: 1.2rem;
+    margin: 0;
+  }
+
+  .modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+
+  .modal-close:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.2rem;
+  }
+
+  .modal-actions .btn-primary {
+    margin-top: 0;
+    flex: 1;
+  }
+
+  .btn-delete {
+    padding: 0.75rem 1.1rem;
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--danger);
+    font-weight: 600;
+    transition: background 0.15s ease;
+  }
+
+  .btn-delete:hover {
+    background: rgba(239, 68, 68, 0.12);
+  }
+
+  :global(body.modal-open) {
+    overflow: hidden;
   }
 
   /* ═══════════ Mobile: elementos base (ocultos en desktop) ═══════════ */
@@ -1503,10 +2022,9 @@ const initialData = { user, house, expenses, fixed, income };
     }
 
     /* En Costos fijos no hay lista de movimientos al lado: la tarjeta
-       (form + lista propia) se centra con un ancho cómodo. */
+       (form + lista propia) ocupa todo el ancho de la página. */
     .page[data-desktop-view='fijos'] .layout-grid {
-      grid-template-columns: minmax(280px, 560px);
-      justify-content: center;
+      grid-template-columns: 1fr;
     }
   }
 
@@ -1626,6 +2144,16 @@ const initialData = { user, house, expenses, fixed, income };
     .expense-desc {
       white-space: normal;
       overflow-wrap: anywhere;
+    }
+
+    /* Costo fijo en mobile: el toggle de pagado va en una fila propia. */
+    .fixed-item {
+      grid-template-columns: auto 1fr auto auto;
+    }
+
+    .fixed-item .paid-toggle {
+      grid-column: 1 / -1;
+      justify-self: start;
     }
   }
 </style>

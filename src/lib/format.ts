@@ -39,6 +39,13 @@ export function monthKeyOf(iso: string): string {
   return iso.slice(0, 7);
 }
 
+/** Desplaza una clave de mes (YYYY-MM) `delta` meses (negativo = hacia atrás). */
+export function shiftMonth(monthKey: string, delta: number): string {
+  const [year, month] = monthKey.split('-').map(Number);
+  const d = new Date(year!, month! - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 /** Fecha de hoy en formato ISO YYYY-MM-DD (zona horaria local). */
 export function todayISO(): string {
   const now = new Date();
