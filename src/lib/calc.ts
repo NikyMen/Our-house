@@ -1,6 +1,7 @@
 // Funciones de cálculo puras (sin acceso a datos). Sirven tanto en el
 // navegador como en el servidor: reciben arrays y devuelven totales/filtros.
 import type { CategoryId, Expense, FixedCost, Income } from './types';
+import { SHARED_PAYER } from './types';
 import { monthKeyOf } from './format';
 
 // ─── Gastos ──────────────────────────────────────────────────────────────────
@@ -29,10 +30,21 @@ export function totalsByCategory(expenses: Expense[]): Map<CategoryId, number> {
   return map;
 }
 
-export function totalsByPerson(expenses: Expense[]): Map<string, number> {
+/**
+ * Total que le corresponde a cada persona. Los gastos marcados como
+ * compartidos (paidBy === SHARED_PAYER) se reparten en partes iguales entre
+ * los integrantes indicados. Si no se pasan integrantes, el gasto compartido
+ * se agrupa bajo la etiqueta "Ambos".
+ */
+export function totalsByPerson(expenses: Expense[], members: string[] = []): Map<string, number> {
   const map = new Map<string, number>();
   for (const e of expenses) {
-    map.set(e.paidBy, (map.get(e.paidBy) ?? 0) + e.amount);
+    if (e.paidBy === SHARED_PAYER && members.length > 0) {
+      const share = e.amount / members.length;
+      for (const m of members) map.set(m, (map.get(m) ?? 0) + share);
+    } else {
+      map.set(e.paidBy, (map.get(e.paidBy) ?? 0) + e.amount);
+    }
   }
   return map;
 }

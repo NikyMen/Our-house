@@ -12,6 +12,12 @@ export interface Expense {
   date: string;
 }
 
+/**
+ * Valor especial de `paidBy` que indica un gasto compartido a partes iguales
+ * entre todos los integrantes de la casa (mitad y mitad si son dos).
+ */
+export const SHARED_PAYER = 'Ambos';
+
 export type CategoryId =
   | 'comida'
   | 'hogar'

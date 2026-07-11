@@ -19,7 +19,7 @@ const initialData = { user, house, expenses, fixed, income };
 <Layout title="OurHouse · App">
   <script id="__DATA__" type="application/json" is:inline set:html={JSON.stringify(initialData)}
   ></script>
-  <div class="page" id="page" data-view="resumen" data-add-mode="gasto">
+  <div class="page" id="page" data-view="resumen" data-add-mode="gasto" data-desktop-view="gastos">
     <header class="header">
       <div class="brand">
         <span class="logo">🏠</span>
@@ -48,6 +48,18 @@ const initialData = { user, house, expenses, fixed, income };
         </div>
       </div>
     </header>
+
+    <nav class="desktop-nav" role="tablist" aria-label="Secciones principales">
+      <button type="button" class="desktop-tab active" data-dview="gastos" role="tab" aria-selected="true">
+        💸 Gastos
+      </button>
+      <button type="button" class="desktop-tab" data-dview="ingresos" role="tab" aria-selected="false">
+        💰 Ingresos
+      </button>
+      <button type="button" class="desktop-tab" data-dview="fijos" role="tab" aria-selected="false">
+        📌 Costos fijos
+      </button>
+    </nav>
 
     <section class="summary">
       <article class="card saldo-card" id="saldo-card">
@@ -299,7 +311,7 @@ const initialData = { user, house, expenses, fixed, income };
     totalsByCategory,
     totalsByPerson,
   } from '../lib/calc';
-  import { CATEGORIES, INCOME_TYPES, getCategory, type CategoryId } from '../lib/types';
+  import { CATEGORIES, INCOME_TYPES, SHARED_PAYER, getCategory, type CategoryId } from '../lib/types';
   import type { Expense, FixedCost, House, Income, User } from '../lib/types';
   import { formatDate, formatMonth, formatMoney, monthKeyOf, todayISO } from '../lib/format';
 
@@ -344,6 +356,7 @@ const initialData = { user, house, expenses, fixed, income };
   const settingsCopy   = $<HTMLButtonElement>('#settings-copy-btn');
   const navItems = [...document.querySelectorAll<HTMLButtonElement>('.mobile-nav [data-view]')];
   const addTabs  = [...document.querySelectorAll<HTMLButtonElement>('.add-tab')];
+  const desktopTabs = [...document.querySelectorAll<HTMLButtonElement>('.desktop-tab')];
 
   const mobileMq = window.matchMedia('(max-width: 820px)');
   const isMobile = (): boolean => mobileMq.matches;
@@ -356,6 +369,8 @@ const initialData = { user, house, expenses, fixed, income };
   let fixed = data.fixed;
   let income = data.income;
   let selectedMonth = '';
+  /** Sección activa en modo computadora: gastos | ingresos | fijos. */
+  let desktopView = 'gastos';
 
   $<HTMLSpanElement>('#user-greeting').textContent = `Hola, ${currentUser.displayName}`;
   $<HTMLParagraphElement>('#settings-user').textContent = `Hola, ${currentUser.displayName} 👋`;
@@ -392,6 +407,23 @@ const initialData = { user, house, expenses, fixed, income };
     });
   }
 
+  /* ── Navegación desktop por secciones (Gastos / Ingresos / Costos fijos) ── */
+  for (const tab of desktopTabs) {
+    tab.addEventListener('click', () => {
+      desktopView = tab.dataset.dview!;
+      pageEl.dataset.desktopView = desktopView;
+      for (const t of desktopTabs) {
+        t.classList.toggle('active', t === tab);
+        t.setAttribute('aria-selected', String(t === tab));
+      }
+      render();
+    });
+  }
+
+  // Al cruzar el umbral mobile/desktop, la lista de movimientos cambia de
+  // filtrado (desktop filtra por sección; mobile muestra todo mezclado).
+  mobileMq.addEventListener('change', () => render());
+
   /** Rellena los selects de persona con los integrantes de la casa. */
   function populateMemberSelects(): void {
     for (const sel of [paidBySelect, personSelect, fixedPaidBySel]) {
@@ -403,7 +435,15 @@ const initialData = { user, house, expenses, fixed, income };
         opt.textContent = m.displayName;
         sel.append(opt);
       }
-      sel.value = house.members.some((m) => m.displayName === previous)
+      // En "Pagado por" (gastos y costos fijos) se puede repartir el importe
+      // en partes iguales entre todos los integrantes. En ingresos no aplica.
+      if (sel === paidBySelect || sel === fixedPaidBySel) {
+        const shared = document.createElement('option');
+        shared.value = SHARED_PAYER;
+        shared.textContent = `🤝 ${SHARED_PAYER} (partes iguales)`;
+        sel.append(shared);
+      }
+      sel.value = house.members.some((m) => m.displayName === previous) || previous === SHARED_PAYER
         ? previous
         : currentUser.displayName;
     }
@@ -472,7 +512,8 @@ const initialData = { user, house, expenses, fixed, income };
 
     const personList = $<HTMLUListElement>('#by-person');
     personList.innerHTML = '';
-    const sortedPeople = [...totalsByPerson(combined).entries()].sort((a, b) => b[1] - a[1]);
+    const memberNames = house.members.map((m) => m.displayName);
+    const sortedPeople = [...totalsByPerson(combined, memberNames).entries()].sort((a, b) => b[1] - a[1]);
     if (sortedPeople.length === 0) {
       personList.append(emptyLi());
     } else {
@@ -508,9 +549,14 @@ const initialData = { user, house, expenses, fixed, income };
   }
 
   function renderList(
-    monthly: ReturnType<typeof filterByMonth>,
-    monthIncome: ReturnType<typeof filterIncomeByMonth>
+    allMonthly: ReturnType<typeof filterByMonth>,
+    allMonthIncome: ReturnType<typeof filterIncomeByMonth>
   ): void {
+    // En desktop la lista acompaña a la sección activa; en mobile se
+    // muestran todos los movimientos mezclados (vista "Movim.").
+    const monthly = isMobile() || desktopView === 'gastos' ? allMonthly : [];
+    const monthIncome = isMobile() || desktopView === 'ingresos' ? allMonthIncome : [];
+
     list.innerHTML = '';
     const totalItems = monthly.length + monthIncome.length;
     emptyState.hidden = totalItems > 0;
@@ -538,8 +584,9 @@ const initialData = { user, house, expenses, fixed, income };
         const c = getCategory(e.category);
         node.querySelector<HTMLSpanElement>('.cat-dot')!.style.background = c.color;
         node.querySelector<HTMLSpanElement>('.expense-desc')!.textContent = e.description;
+        const payerLabel = e.paidBy === SHARED_PAYER ? `🤝 ${e.paidBy}` : e.paidBy;
         node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
-          `${c.emoji} ${c.label} · ${formatDate(e.date)} · ${e.paidBy}`;
+          `${c.emoji} ${c.label} · ${formatDate(e.date)} · ${payerLabel}`;
         node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = money(e.amount);
         node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', async () => {
           try {
@@ -583,8 +630,9 @@ const initialData = { user, house, expenses, fixed, income };
       const c = getCategory(f.category);
       node.querySelector<HTMLSpanElement>('.cat-dot')!.style.background = c.color;
       node.querySelector<HTMLSpanElement>('.expense-desc')!.textContent = f.description;
+      const fPayerLabel = f.paidBy === SHARED_PAYER ? `🤝 ${f.paidBy}` : f.paidBy;
       node.querySelector<HTMLSpanElement>('.expense-meta')!.textContent =
-        `${c.emoji} ${c.label} · cada mes · ${f.paidBy}`;
+        `${c.emoji} ${c.label} · cada mes · ${fPayerLabel}`;
       node.querySelector<HTMLSpanElement>('.expense-amount')!.textContent = money(f.amount);
       node.querySelector<HTMLButtonElement>('.btn-del')!.addEventListener('click', async () => {
         try {
@@ -910,6 +958,45 @@ const initialData = { user, house, expenses, fixed, income };
     border-radius: var(--radius);
     padding: 1.25rem;
     box-shadow: var(--shadow);
+  }
+
+  /* ── Navegación desktop: Gastos / Ingresos / Costos fijos ── */
+  .desktop-nav {
+    display: flex;
+    gap: 0.4rem;
+    width: fit-content;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.3rem;
+  }
+
+  .desktop-tab {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0.6rem 1.5rem;
+    border-radius: 9px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .desktop-tab:hover {
+    color: var(--text);
+  }
+
+  .desktop-tab.active {
+    background: var(--accent);
+    color: white;
+  }
+
+  .desktop-tab.active[data-dview='ingresos'] {
+    background: #10b981;
+  }
+
+  .desktop-tab.active[data-dview='fijos'] {
+    background: #f97316;
   }
 
   .summary {
@@ -1402,6 +1489,27 @@ const initialData = { user, house, expenses, fixed, income };
     outline: 3px solid rgba(129, 140, 248, 0.45);
   }
 
+  /* ═══════════ Desktop: layout por secciones ═══════════ */
+
+  @media (min-width: 821px) {
+    .page[data-desktop-view='gastos'] .card-income,
+    .page[data-desktop-view='gastos'] .card-fixed,
+    .page[data-desktop-view='ingresos'] .card-expense,
+    .page[data-desktop-view='ingresos'] .card-fixed,
+    .page[data-desktop-view='fijos'] .card-expense,
+    .page[data-desktop-view='fijos'] .card-income,
+    .page[data-desktop-view='fijos'] .list-card {
+      display: none;
+    }
+
+    /* En Costos fijos no hay lista de movimientos al lado: la tarjeta
+       (form + lista propia) se centra con un ancho cómodo. */
+    .page[data-desktop-view='fijos'] .layout-grid {
+      grid-template-columns: minmax(280px, 560px);
+      justify-content: center;
+    }
+  }
+
   /* ═══════════ Mobile: layout por vistas ═══════════ */
 
   @media (max-width: 820px) {
@@ -1413,7 +1521,8 @@ const initialData = { user, house, expenses, fixed, income };
     /* Header compacto: solo marca + selector de mes */
     .house-chip,
     .user-area,
-    .btn-hide {
+    .btn-hide,
+    .desktop-nav {
       display: none;
     }
 
