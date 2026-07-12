@@ -6,6 +6,16 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev", "--port", "4399"],
       "port": 4399
+    },
+    {
+      "name": "ourhouse-dev-4517",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-Command",
+        "$env:DATABASE_URL='postgres://postgres:postgres@127.0.0.1:55432/postgres'; $env:PG_POOL_MAX='1'; pnpm dev --port 4517"
+      ],
+      "port": 4517
     }
   ]
 }

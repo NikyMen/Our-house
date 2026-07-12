@@ -1,0 +1,14 @@
+{
+  "name": "ourhouse-dev-db",
+  "private": true,
+  "type": "module",
+  "description": "Base PostgreSQL embebida (PGlite) para desarrollo local de OurHouse.",
+  "scripts": {
+    "start": "node server.mjs",
+    "seed": "node seed.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "@electric-sql/pglite-socket": "^0.2.7"
+  }
+}

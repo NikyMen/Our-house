@@ -228,4 +228,51 @@ if (Astro.locals.user) {
     color: var(--text-muted);
     font-size: 0.8rem;
   }
+
+  /* ═══ Skin glassmorphism ═══ */
+  .login-card {
+    background: var(--glass-bg-strong);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    animation: rise-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .logo {
+    animation: logo-float 5.5s ease-in-out infinite;
+  }
+
+  @keyframes logo-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+
+  .tabs {
+    background: rgba(7, 11, 26, 0.45);
+    border-color: var(--glass-border);
+  }
+
+  .tab.active {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    box-shadow: 0 8px 20px -8px rgba(99, 102, 241, 0.8);
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    border-radius: 12px;
+    box-shadow: 0 12px 26px -12px rgba(99, 102, 241, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transition: transform 0.15s ease, filter 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    filter: brightness(1.12);
+    transform: translateY(-1px);
+  }
 </style>

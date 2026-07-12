@@ -78,18 +78,94 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
 
     <section class="summary">
       <article class="card saldo-card" id="saldo-card">
+        <span class="saldo-shine" aria-hidden="true"></span>
         <span class="card-label">Saldo del mes</span>
         <strong id="saldo-value" class="total-value">—</strong>
         <span id="saldo-hint" class="card-hint"></span>
+        <div class="saldo-spark" id="saldo-spark" title="Saldo de los últimos 6 meses"></div>
       </article>
-      <article class="card">
+      <article class="card cat-card">
         <span class="card-label">Por categoría</span>
-        <ul id="by-category" class="breakdown"></ul>
+        <div class="cat-flex">
+          <div class="donut-wrap" id="donut-wrap">
+            <div class="shimmer donut-shimmer"></div>
+          </div>
+          <ul id="by-category" class="breakdown cat-breakdown"></ul>
+        </div>
       </article>
       <article class="card">
         <span class="card-label">Quién pagó</span>
-        <ul id="by-person" class="breakdown"></ul>
+        <ul id="by-person" class="breakdown person-breakdown"></ul>
       </article>
+    </section>
+
+    <section class="stats" id="stats" aria-label="Estadísticas del mes">
+      <div class="stats-head">
+        <h2>📈 Estadísticas</h2>
+        <span id="stats-sub" class="card-hint"></span>
+      </div>
+
+      <div class="kpi-row">
+        <article class="card stat-tile">
+          <span class="stat-label">Promedio diario</span>
+          <strong class="stat-value" id="kpi-avg">—</strong>
+          <span class="stat-hint" id="kpi-avg-hint"></span>
+        </article>
+        <article class="card stat-tile">
+          <span class="stat-label" id="kpi-proj-label">Proyección del mes</span>
+          <strong class="stat-value" id="kpi-proj">—</strong>
+          <span class="stat-hint" id="kpi-proj-hint"></span>
+        </article>
+        <article class="card stat-tile">
+          <span class="stat-label">Gastos vs mes anterior</span>
+          <strong class="stat-value stat-delta" id="kpi-delta">—</strong>
+          <span class="stat-hint" id="kpi-delta-hint"></span>
+        </article>
+        <article class="card stat-tile">
+          <span class="stat-label">Tasa de ahorro</span>
+          <strong class="stat-value" id="kpi-save">—</strong>
+          <div class="meter" id="kpi-save-meter" hidden>
+            <span class="meter-fill" id="kpi-save-fill"></span>
+          </div>
+          <span class="stat-hint" id="kpi-save-hint"></span>
+        </article>
+      </div>
+
+      <div class="charts-grid">
+        <article class="card chart-card">
+          <div class="chart-head">
+            <h3>Gasto acumulado del mes</h3>
+            <div class="chart-legend" aria-hidden="true">
+              <span class="lg-item"><i class="lg-line" style="background:var(--chart-gasto)"></i>Este mes</span>
+              <span class="lg-item" id="lg-prev"><i class="lg-line" style="background:var(--chart-context)"></i>Mes anterior</span>
+            </div>
+          </div>
+          <div class="chart-body" id="chart-cum">
+            <div class="shimmer chart-shimmer"></div>
+          </div>
+          <details class="chart-table">
+            <summary>Ver datos</summary>
+            <div class="chart-table-scroll"><table id="table-cum"></table></div>
+          </details>
+        </article>
+
+        <article class="card chart-card">
+          <div class="chart-head">
+            <h3>Últimos 6 meses</h3>
+            <div class="chart-legend" aria-hidden="true">
+              <span class="lg-item"><i class="lg-swatch" style="background:var(--chart-gasto)"></i>Gastos</span>
+              <span class="lg-item"><i class="lg-swatch" style="background:var(--chart-ingreso)"></i>Ingresos</span>
+            </div>
+          </div>
+          <div class="chart-body" id="chart-months">
+            <div class="shimmer chart-shimmer"></div>
+          </div>
+          <details class="chart-table">
+            <summary>Ver datos</summary>
+            <div class="chart-table-scroll"><table id="table-months"></table></div>
+          </details>
+        </article>
+      </div>
     </section>
 
     <section class="layout-grid">
@@ -107,8 +183,8 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
           <h2>Nuevo gasto</h2>
           <form id="expense-form" autocomplete="off">
             <div class="field">
-              <label for="description">Descripción</label>
-              <input id="description" name="description" type="text" placeholder="Compra semanal" required maxlength="80" />
+              <label for="description">Descripción <span class="field-optional">(opcional)</span></label>
+              <input id="description" name="description" type="text" placeholder="Compra semanal" maxlength="80" />
             </div>
             <div class="field-row">
               <div class="field">
@@ -386,18 +462,32 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
   } from '../lib/api-client';
   import {
     availableMonths,
+    cumulativeByDay,
+    donutSlices,
     filterByMonth,
     filterIncomeByMonth,
     fixedAsExpenses,
     fixedCostsTotal,
     incomeTotal,
+    monthlySeries,
     total,
     totalsByCategory,
     totalsByPerson,
+    type MonthlyPoint,
   } from '../lib/calc';
   import { CATEGORIES, INCOME_TYPES, SHARED_PAYER, getCategory, type CategoryId } from '../lib/types';
   import type { Expense, FixedCost, FixedPayment, House, Income, User } from '../lib/types';
-  import { formatDate, formatMonth, formatMoney, monthKeyOf, shiftMonth, todayISO } from '../lib/format';
+  import {
+    daysInMonth,
+    formatDate,
+    formatMonth,
+    formatMoney,
+    formatMoneyCompact,
+    formatMonthShort,
+    monthKeyOf,
+    shiftMonth,
+    todayISO,
+  } from '../lib/format';
 
   // El servidor ya validó sesión y casa activa, e inyectó los datos iniciales.
   const data = JSON.parse(document.getElementById('__DATA__')!.textContent!) as {
@@ -468,9 +558,167 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
   const mobileMq = window.matchMedia('(max-width: 820px)');
   const isMobile = (): boolean => mobileMq.matches;
 
+  /**
+   * Convierte un <select> en un combobox con búsqueda: se escribe para filtrar
+   * las categorías (p. ej. "co" → "Coca-Cola", "Comida"…) y se elige una de la
+   * lista. El <select> original queda oculto pero sigue guardando el valor, así
+   * que el envío del formulario no cambia. Tras asignar `select.value` por
+   * código hay que llamar a `select._comboSync()` para refrescar el texto.
+   */
+  function enhanceSelectSearch(select: HTMLSelectElement): void {
+    const wrap = document.createElement('div');
+    wrap.className = 'combo';
+    select.parentNode!.insertBefore(wrap, select);
+    wrap.appendChild(select);
+    select.classList.add('combo-native');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'combo-input';
+    input.autocomplete = 'off';
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-expanded', 'false');
+    input.placeholder = 'Buscar categoría…';
+
+    const menu = document.createElement('ul');
+    menu.className = 'combo-menu';
+    menu.hidden = true;
+
+    wrap.appendChild(input);
+    wrap.appendChild(menu);
+
+    const opts = [...select.options].map((o) => ({ value: o.value, label: o.text }));
+    let filtered = opts;
+    let activeIdx = -1;
+
+    const norm = (s: string): string =>
+      s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const labelFor = (value: string): string =>
+      opts.find((o) => o.value === value)?.label ?? '';
+    const syncFromSelect = (): void => { input.value = labelFor(select.value); };
+
+    function renderMenu(): void {
+      menu.textContent = '';
+      if (!filtered.length) {
+        const li = document.createElement('li');
+        li.className = 'combo-empty';
+        li.textContent = 'Sin resultados';
+        menu.appendChild(li);
+        return;
+      }
+      filtered.forEach((o, i) => {
+        const li = document.createElement('li');
+        li.className = 'combo-option' + (i === activeIdx ? ' is-active' : '');
+        li.textContent = o.label;
+        li.addEventListener('mousedown', (ev) => {
+          ev.preventDefault();
+          choose(o.value);
+        });
+        menu.appendChild(li);
+      });
+    }
+
+    function applyFilter(q: string): void {
+      const nq = norm(q.trim());
+      filtered = nq ? opts.filter((o) => norm(o.label).includes(nq)) : opts;
+      activeIdx = filtered.length ? 0 : -1;
+      renderMenu();
+    }
+
+    function open(): void {
+      applyFilter('');
+      menu.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+    }
+
+    function close(): void {
+      menu.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      activeIdx = -1;
+      syncFromSelect();
+    }
+
+    function choose(value: string): void {
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      close();
+    }
+
+    input.addEventListener('focus', open);
+    input.addEventListener('input', () => {
+      menu.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      applyFilter(input.value);
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (menu.hidden) { open(); return; }
+        activeIdx = Math.min(activeIdx + 1, filtered.length - 1);
+        renderMenu();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIdx = Math.max(activeIdx - 1, 0);
+        renderMenu();
+      } else if (e.key === 'Enter') {
+        if (!menu.hidden && filtered[activeIdx]) {
+          e.preventDefault();
+          choose(filtered[activeIdx]!.value);
+        }
+      } else if (e.key === 'Escape') {
+        close();
+      }
+    });
+    document.addEventListener('click', (e) => {
+      if (!wrap.contains(e.target as Node)) close();
+    });
+
+    (select as unknown as { _comboSync: () => void })._comboSync = syncFromSelect;
+    syncFromSelect();
+  }
+
+  const comboSync = (select: HTMLSelectElement): void => {
+    (select as unknown as { _comboSync?: () => void })._comboSync?.();
+  };
+
   const HIDE_KEY = 'ourhouse.hideMoney.v1';
   let moneyHidden = localStorage.getItem(HIDE_KEY) === '1';
   const money = (amount: number): string => moneyHidden ? '••••••' : formatMoney(amount);
+  const moneyCompact = (amount: number): string => (moneyHidden ? '···' : formatMoneyCompact(amount));
+
+  const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ── Números que cuentan: animación de valor con easing ── */
+  const numAnims = new WeakMap<HTMLElement, number>();
+  const numValues = new WeakMap<HTMLElement, number>();
+
+  function animateNumber(el: HTMLElement, to: number, fmt: (v: number) => string): void {
+    const prev = numAnims.get(el);
+    if (prev) cancelAnimationFrame(prev);
+    if (moneyHidden || REDUCED_MOTION) {
+      numValues.set(el, to);
+      el.textContent = fmt(to);
+      return;
+    }
+    const from = numValues.get(el) ?? 0;
+    if (from === to) {
+      el.textContent = fmt(to);
+      return;
+    }
+    const t0 = performance.now();
+    const dur = 750;
+    const tick = (now: number): void => {
+      const t = Math.min(1, (now - t0) / dur);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = fmt(from + (to - from) * eased);
+      if (t < 1) {
+        numAnims.set(el, requestAnimationFrame(tick));
+      } else {
+        numValues.set(el, to);
+      }
+    };
+    numAnims.set(el, requestAnimationFrame(tick));
+  }
 
   let expenses = data.expenses;
   let fixed = data.fixed;
@@ -582,6 +830,7 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
     const monthly = filterByMonth(expenses, selectedMonth);
     const monthIncome = filterIncomeByMonth(income, selectedMonth);
     renderSummary(monthly, monthIncome);
+    renderStats(monthly, monthIncome);
     renderList(monthly, monthIncome);
     renderFixed();
   }
@@ -598,7 +847,7 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
 
     // Saldo card
     const saldoCard = $<HTMLElement>('#saldo-card');
-    $<HTMLElement>('#saldo-value').textContent = money(saldo);
+    animateNumber($<HTMLElement>('#saldo-value'), saldo, money);
     const ingrText = monthIncome.length === 0 ? 'Sin ingresos' : `${money(ingresoTotal)} ingresados`;
     $<HTMLElement>('#saldo-hint').textContent = `${ingrText} · ${money(gastoTotal)} gastados`;
     saldoCard.classList.toggle('saldo-negative', saldo < 0);
@@ -612,15 +861,20 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
     $<HTMLElement>('#dtab-sub-ingresos').textContent = money(ingresoTotal);
     $<HTMLElement>('#dtab-sub-fijos').textContent = `${money(fixedCostsTotal(fixed))}/mes`;
 
+    // Dona por categoría + leyenda con micro-barras (la lista es la tabla de datos)
+    renderDonut(combined);
+
     const catList = $<HTMLUListElement>('#by-category');
     catList.innerHTML = '';
     const sortedCats = [...totalsByCategory(combined).entries()].sort((a, b) => b[1] - a[1]);
     if (sortedCats.length === 0) {
       catList.append(emptyLi());
     } else {
+      const catSum = sortedCats.reduce((s, [, v]) => s + v, 0);
+      const catMax = sortedCats[0]?.[1] ?? 1;
       for (const [cat, amount] of sortedCats) {
         const c = getCategory(cat);
-        catList.append(breakdownLi(`${c.emoji} ${c.label}`, amount, c.color));
+        catList.append(breakdownRow(`${c.emoji} ${c.label}`, amount, amount / catSum, amount / catMax, c.color));
       }
     }
 
@@ -631,27 +885,61 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
     if (sortedPeople.length === 0) {
       personList.append(emptyLi());
     } else {
+      const personSum = sortedPeople.reduce((s, [, v]) => s + v, 0);
+      const personMax = sortedPeople[0]?.[1] ?? 1;
       for (const [person, amount] of sortedPeople) {
-        personList.append(breakdownLi(`👤 ${person}`, amount));
+        // Una sola serie (magnitud por persona): todas las barras en el mismo tono.
+        personList.append(breakdownRow(`👤 ${person}`, amount, amount / personSum, amount / personMax, 'var(--chart-gasto)'));
       }
     }
+
+    // Disparar el crecimiento animado de las micro-barras ya montadas.
+    requestAnimationFrame(() => {
+      for (const bar of document.querySelectorAll<HTMLElement>('.breakdown .b-bar-fill')) {
+        bar.style.width = bar.dataset.w ?? '0%';
+      }
+    });
   }
 
-  function breakdownLi(label: string, amount: number, color?: string): HTMLLIElement {
+  /**
+   * Fila de desglose con micro-barra de proporción.
+   * `share` = fracción del total (para el %); `rel` = fracción vs la mayor (ancho de barra).
+   */
+  function breakdownRow(
+    label: string,
+    amount: number,
+    share: number,
+    rel: number,
+    color: string
+  ): HTMLLIElement {
     const li = document.createElement('li');
+    li.className = 'b-row';
+
+    const top = document.createElement('div');
+    top.className = 'b-top';
     const name = document.createElement('span');
     name.className = 'b-name';
-    if (color) {
-      const dot = document.createElement('span');
-      dot.className = 'b-dot';
-      dot.style.background = color;
-      name.append(dot);
-    }
-    name.append(document.createTextNode(label));
+    name.textContent = label;
+    const right = document.createElement('span');
+    right.className = 'b-right';
     const value = document.createElement('span');
     value.className = 'b-value';
     value.textContent = money(amount);
-    li.append(name, value);
+    const pct = document.createElement('span');
+    pct.className = 'b-pct';
+    pct.textContent = `${Math.round(share * 100)}%`;
+    right.append(value, pct);
+    top.append(name, right);
+
+    const bar = document.createElement('div');
+    bar.className = 'b-bar';
+    const fill = document.createElement('span');
+    fill.className = 'b-bar-fill';
+    fill.style.background = color;
+    fill.dataset.w = `${Math.max(2, Math.round(rel * 100))}%`;
+    bar.append(fill);
+
+    li.append(top, bar);
     return li;
   }
 
@@ -779,6 +1067,693 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
     }
   }
 
+  /* ════════════ Estadísticas: KPIs, dona, sparkline y gráficos ════════════ */
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const donutWrap    = $<HTMLDivElement>('#donut-wrap');
+  const chartCumHost = $<HTMLDivElement>('#chart-cum');
+  const chartMonHost = $<HTMLDivElement>('#chart-months');
+  const sparkHost    = $<HTMLDivElement>('#saldo-spark');
+
+  function svgEl<K extends keyof SVGElementTagNameMap>(
+    tag: K,
+    attrs: Record<string, string | number> = {}
+  ): SVGElementTagNameMap[K] {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+    return el;
+  }
+
+  /** Techo "lindo" para el eje Y (1 / 2 / 2,5 / 5 × 10^k). */
+  function niceCeil(v: number): number {
+    if (v <= 0) return 1;
+    const base = Math.pow(10, Math.floor(Math.log10(v)));
+    for (const m of [1, 2, 2.5, 5, 10]) {
+      if (v <= m * base + 1e-9) return m * base;
+    }
+    return 10 * base;
+  }
+
+  /* ── Tooltip compartido por tarjeta de gráfico ── */
+  interface TipRow {
+    key?: string;
+    label: string;
+    value: string;
+  }
+
+  interface Tooltip {
+    show(x: number, y: number, title: string, rows: TipRow[]): void;
+    hide(): void;
+  }
+
+  function makeTooltip(host: HTMLElement): Tooltip {
+    const tip = document.createElement('div');
+    tip.className = 'chart-tip';
+    tip.hidden = true;
+    host.append(tip);
+    return {
+      show(x, y, title, rows) {
+        tip.replaceChildren();
+        const h = document.createElement('div');
+        h.className = 'tip-title';
+        h.textContent = title;
+        tip.append(h);
+        for (const r of rows) {
+          const row = document.createElement('div');
+          row.className = 'tip-row';
+          if (r.key) {
+            const k = document.createElement('i');
+            k.className = 'tip-key';
+            k.style.background = r.key;
+            row.append(k);
+          }
+          const v = document.createElement('strong');
+          v.className = 'tip-value';
+          v.textContent = r.value;
+          const l = document.createElement('span');
+          l.className = 'tip-label';
+          l.textContent = r.label;
+          row.append(v, l);
+          tip.append(row);
+        }
+        tip.hidden = false;
+        const tw = tip.offsetWidth;
+        const th = tip.offsetHeight;
+        let left = x - tw / 2;
+        left = Math.max(4, Math.min(left, host.clientWidth - tw - 4));
+        let top = y - th - 10;
+        if (top < 2) top = y + 16;
+        tip.style.left = `${left}px`;
+        tip.style.top = `${top}px`;
+      },
+      hide() {
+        tip.hidden = true;
+      },
+    };
+  }
+
+  const donutTip = makeTooltip(donutWrap);
+  const cumTip = makeTooltip(chartCumHost);
+  const monTip = makeTooltip(chartMonHost);
+
+  /* ── Dona por categoría (top 5 + resto, colores de cada categoría) ── */
+  let donutCenter: HTMLDivElement | null = null;
+
+  function renderDonut(combined: Expense[]): void {
+    const slices = donutSlices(totalsByCategory(combined), 5);
+    const totalAmt = slices.reduce((s, x) => s + x.amount, 0);
+
+    donutWrap.querySelector('svg')?.remove();
+    donutWrap.querySelector('.donut-shimmer')?.remove();
+    if (!donutCenter) {
+      donutCenter = document.createElement('div');
+      donutCenter.className = 'donut-center';
+      donutCenter.append(document.createElement('strong'), document.createElement('span'));
+      donutWrap.append(donutCenter);
+    }
+    const centerValue = donutCenter.querySelector('strong')!;
+    const centerLabel = donutCenter.querySelector('span')!;
+    centerLabel.textContent = totalAmt > 0 ? 'gastado' : 'sin gastos';
+
+    const size = 168;
+    const r = 60;
+    const C = 2 * Math.PI * r;
+    const svg = svgEl('svg', { viewBox: `0 0 ${size} ${size}`, class: 'donut-svg', role: 'img' });
+    svg.setAttribute('aria-label', `Gasto por categoría del mes: ${money(totalAmt)} en total`);
+
+    // Anillo de fondo (siempre visible, también con la dona vacía).
+    svg.append(
+      svgEl('circle', {
+        cx: size / 2,
+        cy: size / 2,
+        r,
+        fill: 'none',
+        stroke: 'rgba(148,163,197,0.13)',
+        'stroke-width': 16,
+      })
+    );
+
+    if (totalAmt <= 0) {
+      centerValue.textContent = '—';
+      donutWrap.append(svg);
+      return;
+    }
+    animateNumber(centerValue, totalAmt, moneyCompact);
+
+    // Los segmentos arrancan a las 12 en punto.
+    const g = svgEl('g', { transform: `rotate(-90 ${size / 2} ${size / 2})` });
+    const gap = slices.length > 1 ? 3 : 0;
+    let acc = 0;
+
+    slices.forEach((slice, i) => {
+      const frac = slice.amount / totalAmt;
+      const segLen = Math.max(0.5, frac * C - gap);
+      const cat = slice.category ? getCategory(slice.category) : null;
+      const color = cat ? cat.color : '#64748b';
+      const label = cat ? `${cat.emoji} ${cat.label}` : '📦 Resto';
+      const pctTxt = `${Math.round(frac * 100)}%`;
+
+      const seg = svgEl('circle', {
+        cx: size / 2,
+        cy: size / 2,
+        r,
+        fill: 'none',
+        stroke: color,
+        'stroke-width': 16,
+        'stroke-dasharray': `0 ${C}`,
+        'stroke-dashoffset': -(acc + gap / 2),
+        class: 'donut-seg',
+        tabindex: 0,
+        role: 'img',
+      });
+      seg.setAttribute('aria-label', `${label}: ${money(slice.amount)} (${pctTxt} del mes)`);
+      seg.style.transitionDelay = `${140 + i * 90}ms`;
+      seg.addEventListener('transitionend', () => (seg.style.transitionDelay = '0ms'), { once: true });
+
+      const segMid = acc + (frac * C) / 2;
+      const showTip = (): void => {
+        seg.classList.add('is-hot');
+        const ang = (segMid / C) * 2 * Math.PI - Math.PI / 2;
+        const scale = (donutWrap.clientWidth || size) / size;
+        donutTip.show(
+          (size / 2 + Math.cos(ang) * r) * scale,
+          (size / 2 + Math.sin(ang) * r) * scale,
+          label,
+          [{ key: color, label: pctTxt, value: money(slice.amount) }]
+        );
+      };
+      const hideTip = (): void => {
+        seg.classList.remove('is-hot');
+        donutTip.hide();
+      };
+      seg.addEventListener('pointerenter', showTip);
+      seg.addEventListener('pointerleave', hideTip);
+      seg.addEventListener('focus', showTip);
+      seg.addEventListener('blur', hideTip);
+
+      g.append(seg);
+      acc += frac * C;
+
+      // Doble rAF: primero se monta con arco 0, después barre hasta su tamaño.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => seg.setAttribute('stroke-dasharray', `${segLen} ${C - segLen}`))
+      );
+    });
+
+    svg.append(g);
+    donutWrap.append(svg);
+  }
+
+  /* ── Sparkline de saldo (últimos 6 meses) dentro de la tarjeta de saldo ── */
+  function renderSparkline(series: MonthlyPoint[]): void {
+    sparkHost.replaceChildren();
+    if (series.every((p) => p.saldo === 0)) return;
+
+    const w = 150;
+    const h = 34;
+    const pad = 4;
+    const vals = series.map((p) => p.saldo);
+    const min = Math.min(...vals, 0);
+    const max = Math.max(...vals, 0);
+    const span = max - min || 1;
+    const x = (i: number): number => pad + (i * (w - pad * 2)) / Math.max(1, series.length - 1);
+    const y = (v: number): number => pad + (h - pad * 2) * (1 - (v - min) / span);
+
+    const svg = svgEl('svg', { viewBox: `0 0 ${w} ${h}`, class: 'spark-svg', 'aria-hidden': 'true' });
+    if (min < 0 && max > 0) {
+      svg.append(svgEl('line', { x1: pad, x2: w - pad, y1: y(0), y2: y(0), class: 'spark-zero' }));
+    }
+    const d = vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+    const path = svgEl('path', { d, class: 'spark-line' });
+    svg.append(path);
+    svg.append(svgEl('circle', { cx: x(vals.length - 1), cy: y(vals[vals.length - 1]!), r: 3, class: 'spark-dot' }));
+    sparkHost.append(svg);
+
+    const len = path.getTotalLength();
+    path.style.strokeDasharray = String(len);
+    path.style.strokeDashoffset = String(len);
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        path.style.strokeDashoffset = '0';
+      })
+    );
+  }
+
+  /* ── Gráfico de área: gasto acumulado del mes vs mes anterior ── */
+  let lastCumW = 0;
+
+  function renderCumulativeChart(skipAnim = false): void {
+    const host = chartCumHost;
+    host.querySelector('svg')?.remove();
+    host.querySelector('.chart-shimmer')?.remove();
+    host.querySelector('.chart-empty-note')?.remove();
+
+    const W = Math.max(280, host.clientWidth || 0);
+    lastCumW = W;
+    const H = 232;
+    const padL = 56;
+    const padR = 18;
+    const padT = 16;
+    const padB = 28;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+
+    const curKey = monthKeyOf(todayISO());
+    const isCurrent = selectedMonth === curKey;
+    const prevKey = shiftMonth(selectedMonth, -1);
+
+    const cur = cumulativeByDay(expenses, fixed, selectedMonth);
+    const prevAll = cumulativeByDay(expenses, fixed, prevKey);
+    const prevHasData = expenses.some((e) => monthKeyOf(e.date) === prevKey);
+    const todayDay = Number(todayISO().slice(8, 10));
+    const curShown = isCurrent ? cur.slice(0, todayDay) : cur;
+    const days = Math.max(cur.length, prevHasData ? prevAll.length : 0);
+
+    // Leyenda del mes anterior solo si hay línea de contexto.
+    document.querySelector<HTMLElement>('#lg-prev')?.toggleAttribute('hidden', !prevHasData);
+
+    const curFinal = curShown[curShown.length - 1] ?? 0;
+    if (curFinal <= 0 && !prevHasData) {
+      const note = document.createElement('p');
+      note.className = 'chart-empty-note';
+      note.textContent = 'Sin gastos este mes todavía. El gráfico se dibuja solo. ✨';
+      host.append(note);
+      fillCumTable(curShown, prevAll, prevHasData);
+      return;
+    }
+
+    const yMax = niceCeil(Math.max(curFinal, prevHasData ? prevAll[prevAll.length - 1] ?? 0 : 0, 1));
+    const x = (i: number): number => padL + (i * innerW) / Math.max(1, days - 1);
+    const y = (v: number): number => padT + innerH * (1 - v / yMax);
+
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: 'chart-svg' });
+
+    // Grilla y etiquetas del eje Y
+    const steps = 4;
+    for (let s = 0; s <= steps; s++) {
+      const gy = padT + (innerH * s) / steps;
+      svg.append(svgEl('line', { x1: padL, x2: W - padR, y1: gy, y2: gy, class: 'grid-line' }));
+      const t = svgEl('text', { x: padL - 8, y: gy + 4, class: 'axis-label', 'text-anchor': 'end' });
+      t.textContent = moneyCompact(yMax * (1 - s / steps));
+      svg.append(t);
+    }
+
+    // Etiquetas del eje X (día del mes)
+    const dayStep = days > 21 ? 5 : days > 10 ? 3 : 2;
+    for (let d = 1; d <= days; d += dayStep) {
+      const t = svgEl('text', { x: x(d - 1), y: H - 8, class: 'axis-label', 'text-anchor': 'middle' });
+      t.textContent = String(d);
+      svg.append(t);
+    }
+
+    const defs = svgEl('defs');
+    const grad = svgEl('linearGradient', { id: 'cum-fill', x1: 0, y1: 0, x2: 0, y2: 1 });
+    grad.append(
+      svgEl('stop', { offset: '0%', 'stop-color': 'rgba(99,102,241,0.30)' }),
+      svgEl('stop', { offset: '100%', 'stop-color': 'rgba(99,102,241,0)' })
+    );
+    defs.append(grad);
+    svg.append(defs);
+
+    // Mes anterior: línea de contexto en gris
+    if (prevHasData) {
+      const dPrev = prevAll
+        .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
+        .join(' ');
+      svg.append(svgEl('path', { d: dPrev, class: 'cum-line-prev' }));
+    }
+
+    // Mes seleccionado: área + línea + marcador final con etiqueta directa
+    if (curShown.length > 0) {
+      const dCur = curShown
+        .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
+        .join(' ');
+      const lastI = curShown.length - 1;
+      const area = svgEl('path', {
+        d: `${dCur} L${x(lastI).toFixed(1)} ${y(0)} L${x(0)} ${y(0)} Z`,
+        fill: 'url(#cum-fill)',
+        class: 'cum-area',
+      });
+      const line = svgEl('path', { d: dCur, class: 'cum-line' });
+      const dot = svgEl('circle', { cx: x(lastI), cy: y(curFinal), r: 4.5, class: 'cum-dot' });
+      const lblAnchor = lastI / Math.max(1, days - 1) > 0.72 ? 'end' : 'middle';
+      const lbl = svgEl('text', {
+        x: x(lastI) - (lblAnchor === 'end' ? 8 : 0),
+        y: Math.max(padT + 12, y(curFinal) - 12),
+        class: 'chart-endlabel',
+        'text-anchor': lblAnchor,
+      });
+      lbl.textContent = moneyCompact(curFinal);
+      svg.append(area, line, dot, lbl);
+
+      if (skipAnim || REDUCED_MOTION) {
+        area.classList.add('is-on');
+        dot.classList.add('is-on');
+        lbl.classList.add('is-on');
+      } else {
+        const len = line.getTotalLength();
+        line.style.strokeDasharray = String(len);
+        line.style.strokeDashoffset = String(len);
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            line.style.transition = 'stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1)';
+            line.style.strokeDashoffset = '0';
+            area.classList.add('is-on');
+            dot.classList.add('is-on');
+            lbl.classList.add('is-on');
+          })
+        );
+      }
+    }
+
+    // Crosshair + capa de hover (tooltip con las dos series en el día X)
+    const cross = svgEl('line', { y1: padT, y2: padT + innerH, x1: 0, x2: 0, class: 'crosshair' });
+    cross.setAttribute('visibility', 'hidden');
+    const hover = svgEl('rect', {
+      x: padL,
+      y: padT,
+      width: innerW,
+      height: innerH,
+      fill: 'transparent',
+      class: 'hover-layer',
+      tabindex: 0,
+      role: 'img',
+    });
+    hover.setAttribute(
+      'aria-label',
+      'Gasto acumulado por día. Con el teclado, usá las flechas para recorrer los días.'
+    );
+
+    let hoverIdx = -1;
+    const showAt = (i: number): void => {
+      hoverIdx = Math.max(0, Math.min(days - 1, i));
+      const px = x(hoverIdx);
+      cross.setAttribute('x1', String(px));
+      cross.setAttribute('x2', String(px));
+      cross.setAttribute('visibility', 'visible');
+      const rows: TipRow[] = [];
+      if (hoverIdx < curShown.length) {
+        rows.push({ key: 'var(--chart-gasto)', label: 'este mes', value: money(curShown[hoverIdx]!) });
+      }
+      if (prevHasData && hoverIdx < prevAll.length) {
+        rows.push({ key: 'var(--chart-context)', label: formatMonthShort(prevKey), value: money(prevAll[hoverIdx]!) });
+      }
+      cumTip.show(px, padT + 6, `Día ${hoverIdx + 1}`, rows);
+    };
+    const hideTip = (): void => {
+      cross.setAttribute('visibility', 'hidden');
+      cumTip.hide();
+    };
+
+    hover.addEventListener('pointermove', (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const px = ev.clientX - rect.left;
+      showAt(Math.round(((px - padL) / innerW) * (days - 1)));
+    });
+    hover.addEventListener('pointerleave', hideTip);
+    hover.addEventListener('focus', () => showAt(hoverIdx < 0 ? curShown.length - 1 : hoverIdx));
+    hover.addEventListener('blur', hideTip);
+    hover.addEventListener('keydown', (ev) => {
+      if (ev.key === 'ArrowLeft') {
+        ev.preventDefault();
+        showAt(hoverIdx - 1);
+      } else if (ev.key === 'ArrowRight') {
+        ev.preventDefault();
+        showAt(hoverIdx + 1);
+      }
+    });
+
+    svg.append(cross, hover);
+    host.append(svg);
+    fillCumTable(curShown, prevAll, prevHasData);
+  }
+
+  /* ── Gráfico de columnas: gastos e ingresos de los últimos 6 meses ── */
+  let lastMonW = 0;
+  let lastSeries: MonthlyPoint[] = [];
+
+  /** Columna con la punta redondeada (4px) y la base recta, como manda la casa. */
+  function roundedColumnPath(cx: number, top: number, w: number, h: number): string {
+    const r = Math.min(4, w / 2, h);
+    const x0 = cx;
+    const x1 = cx + w;
+    const yB = top + h;
+    return [
+      `M${x0.toFixed(1)} ${yB.toFixed(1)}`,
+      `L${x0.toFixed(1)} ${(top + r).toFixed(1)}`,
+      `Q${x0.toFixed(1)} ${top.toFixed(1)} ${(x0 + r).toFixed(1)} ${top.toFixed(1)}`,
+      `L${(x1 - r).toFixed(1)} ${top.toFixed(1)}`,
+      `Q${x1.toFixed(1)} ${top.toFixed(1)} ${x1.toFixed(1)} ${(top + r).toFixed(1)}`,
+      `L${x1.toFixed(1)} ${yB.toFixed(1)}`,
+      'Z',
+    ].join(' ');
+  }
+
+  function renderMonthsChart(series: MonthlyPoint[], skipAnim = false): void {
+    const host = chartMonHost;
+    lastSeries = series;
+    host.querySelector('svg')?.remove();
+    host.querySelector('.chart-shimmer')?.remove();
+
+    const W = Math.max(280, host.clientWidth || 0);
+    lastMonW = W;
+    const H = 232;
+    const padL = 56;
+    const padR = 10;
+    const padT = 16;
+    const padB = 30;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+
+    const yMax = niceCeil(Math.max(...series.map((p) => Math.max(p.gastos, p.ingresos)), 1));
+    const band = innerW / series.length;
+    const colW = Math.max(10, Math.min(22, Math.floor(band * 0.24)));
+
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: 'chart-svg' });
+
+    const steps = 4;
+    for (let s = 0; s <= steps; s++) {
+      const gy = padT + (innerH * s) / steps;
+      svg.append(svgEl('line', { x1: padL, x2: W - padR, y1: gy, y2: gy, class: 'grid-line' }));
+      const t = svgEl('text', { x: padL - 8, y: gy + 4, class: 'axis-label', 'text-anchor': 'end' });
+      t.textContent = moneyCompact(yMax * (1 - s / steps));
+      svg.append(t);
+    }
+
+    series.forEach((p, i) => {
+      const cx = padL + band * i + band / 2;
+      const group = svgEl('g', { class: 'month-group' });
+
+      const mkCol = (val: number, offset: number, cls: string, delay: number): void => {
+        if (val <= 0) return;
+        const h = Math.max(2, (val / yMax) * innerH);
+        const col = svgEl('path', {
+          d: roundedColumnPath(cx + offset, padT + innerH - h, colW, h),
+          class: `col ${cls}`,
+        });
+        if (skipAnim || REDUCED_MOTION) {
+          col.classList.add('is-grown');
+          col.style.transition = 'none';
+        } else {
+          col.style.transitionDelay = `${delay}ms`;
+          col.addEventListener('transitionend', () => (col.style.transitionDelay = '0ms'), { once: true });
+          requestAnimationFrame(() => requestAnimationFrame(() => col.classList.add('is-grown')));
+        }
+        group.append(col);
+      };
+      // 2px de aire entre las dos columnas del grupo.
+      mkCol(p.gastos, -colW - 1, 'col-gasto', i * 55);
+      mkCol(p.ingresos, 1, 'col-ingreso', i * 55 + 90);
+
+      const xl = svgEl('text', {
+        x: cx,
+        y: H - 8,
+        class: `axis-label${p.month === selectedMonth ? ' axis-label-current' : ''}`,
+        'text-anchor': 'middle',
+      });
+      xl.textContent = formatMonthShort(p.month);
+
+      const hb = svgEl('rect', {
+        x: padL + band * i,
+        y: padT,
+        width: band,
+        height: innerH,
+        fill: 'transparent',
+        class: 'band-hover',
+        tabindex: 0,
+        role: 'img',
+      });
+      hb.setAttribute(
+        'aria-label',
+        `${formatMonth(p.month)}: gastos ${money(p.gastos)}, ingresos ${money(p.ingresos)}, saldo ${money(p.saldo)}`
+      );
+      const show = (): void => {
+        group.classList.add('is-hot');
+        monTip.show(cx, padT + 4, formatMonth(p.month), [
+          { key: 'var(--chart-gasto)', label: 'gastos', value: money(p.gastos) },
+          { key: 'var(--chart-ingreso)', label: 'ingresos', value: money(p.ingresos) },
+          { label: 'saldo', value: money(p.saldo) },
+        ]);
+      };
+      const hide = (): void => {
+        group.classList.remove('is-hot');
+        monTip.hide();
+      };
+      hb.addEventListener('pointerenter', show);
+      hb.addEventListener('pointerleave', hide);
+      hb.addEventListener('focus', show);
+      hb.addEventListener('blur', hide);
+
+      svg.append(group, xl, hb);
+    });
+
+    host.append(svg);
+    fillMonthsTable(series);
+  }
+
+  /* ── Tablas "Ver datos": el gemelo accesible de cada gráfico ── */
+  function tableRow(cells: string[], header = false): HTMLTableRowElement {
+    const tr = document.createElement('tr');
+    for (const c of cells) {
+      const cell = document.createElement(header ? 'th' : 'td');
+      cell.textContent = c;
+      tr.append(cell);
+    }
+    return tr;
+  }
+
+  function fillCumTable(cur: number[], prev: number[], prevHasData: boolean): void {
+    const table = $<HTMLTableElement>('#table-cum');
+    table.replaceChildren();
+    table.append(tableRow(prevHasData ? ['Día', 'Este mes', 'Mes anterior'] : ['Día', 'Este mes'], true));
+    const days = Math.max(cur.length, prevHasData ? prev.length : 0);
+    for (let d = 0; d < days; d++) {
+      const cells = [String(d + 1), d < cur.length ? money(cur[d]!) : '—'];
+      if (prevHasData) cells.push(d < prev.length ? money(prev[d]!) : '—');
+      table.append(tableRow(cells));
+    }
+  }
+
+  function fillMonthsTable(series: MonthlyPoint[]): void {
+    const table = $<HTMLTableElement>('#table-months');
+    table.replaceChildren();
+    table.append(tableRow(['Mes', 'Gastos', 'Ingresos', 'Saldo'], true));
+    for (const p of series) {
+      table.append(tableRow([formatMonth(p.month), money(p.gastos), money(p.ingresos), money(p.saldo)]));
+    }
+  }
+
+  /* ── KPIs de la sección de estadísticas ── */
+  function renderStats(monthly: Expense[], monthIncome: Income[]): void {
+    const combined = [...monthly, ...fixedAsExpenses(fixed, selectedMonth)];
+    const gastoTotal = total(combined);
+    const ingresoTot = incomeTotal(monthIncome);
+    const saldo = ingresoTot - gastoTotal;
+    const series = monthlySeries(expenses, income, fixed, selectedMonth, 6);
+
+    const movs = monthly.length + monthIncome.length;
+    $<HTMLSpanElement>('#stats-sub').textContent =
+      `${formatMonth(selectedMonth)} · ${movs} ${movs === 1 ? 'movimiento' : 'movimientos'}`;
+
+    const curKey = monthKeyOf(todayISO());
+    const isCurrent = selectedMonth === curKey;
+    const daysTotal = daysInMonth(selectedMonth);
+    const elapsed = isCurrent ? Number(todayISO().slice(8, 10)) : daysTotal;
+
+    // Promedio diario
+    const avg = gastoTotal / Math.max(1, elapsed);
+    animateNumber($<HTMLElement>('#kpi-avg'), avg, money);
+    $<HTMLElement>('#kpi-avg-hint').textContent = isCurrent
+      ? `en ${elapsed} ${elapsed === 1 ? 'día' : 'días'} de mes`
+      : `mes completo · ${daysTotal} días`;
+
+    // Proyección (mes en curso) o total (mes cerrado)
+    const projLabel = $<HTMLElement>('#kpi-proj-label');
+    if (isCurrent) {
+      projLabel.textContent = 'Proyección del mes';
+      animateNumber($<HTMLElement>('#kpi-proj'), avg * daysTotal, money);
+      const rest = daysTotal - elapsed;
+      $<HTMLElement>('#kpi-proj-hint').textContent =
+        rest > 0 ? `a este ritmo · faltan ${rest} ${rest === 1 ? 'día' : 'días'}` : 'último día del mes';
+    } else {
+      projLabel.textContent = 'Total gastado';
+      animateNumber($<HTMLElement>('#kpi-proj'), gastoTotal, money);
+      $<HTMLElement>('#kpi-proj-hint').textContent = 'mes cerrado';
+    }
+
+    // Variación de gastos contra el mes anterior
+    const prev = series[series.length - 2];
+    const prevGasto = prev?.gastos ?? 0;
+    const deltaEl = $<HTMLElement>('#kpi-delta');
+    deltaEl.classList.remove('delta-up', 'delta-down');
+    if (prevGasto <= 0) {
+      deltaEl.textContent = '—';
+      $<HTMLElement>('#kpi-delta-hint').textContent = 'sin gastos el mes anterior';
+    } else {
+      const pctDelta = ((gastoTotal - prevGasto) / prevGasto) * 100;
+      const fmtPct = (v: number): string =>
+        moneyHidden
+          ? '···'
+          : `${v > 0.05 ? '▲ +' : v < -0.05 ? '▼ ' : '• '}${v.toFixed(1).replace('.', ',')}%`;
+      animateNumber(deltaEl, pctDelta, fmtPct);
+      deltaEl.classList.toggle('delta-up', pctDelta > 0.05);
+      deltaEl.classList.toggle('delta-down', pctDelta < -0.05);
+      $<HTMLElement>('#kpi-delta-hint').textContent =
+        `${money(prevGasto)} en ${formatMonthShort(prev?.month ?? shiftMonth(selectedMonth, -1))}`;
+    }
+
+    // Tasa de ahorro (con medidor)
+    const saveEl = $<HTMLElement>('#kpi-save');
+    const meter = $<HTMLDivElement>('#kpi-save-meter');
+    const fill = $<HTMLElement>('#kpi-save-fill');
+    const saveHint = $<HTMLElement>('#kpi-save-hint');
+    meter.hidden = ingresoTot <= 0;
+    if (ingresoTot <= 0) {
+      saveEl.textContent = '—';
+      saveHint.textContent = 'sin ingresos este mes';
+    } else {
+      const rate = (saldo / ingresoTot) * 100;
+      animateNumber(saveEl, rate, (v) => (moneyHidden ? '···' : `${v.toFixed(0)}%`));
+      fill.className = `meter-fill ${rate >= 20 ? 'meter-ok' : rate > 0 ? 'meter-warn' : 'meter-bad'}`;
+      requestAnimationFrame(() => {
+        fill.style.width = `${Math.max(0, Math.min(100, rate))}%`;
+      });
+      saveHint.textContent =
+        rate > 0
+          ? `${rate >= 20 ? '💪' : '🙂'} guardás ${money(saldo)} de ${money(ingresoTot)}`
+          : `🚨 gastás ${money(-saldo)} más de lo que entra`;
+    }
+
+    renderSparkline(series);
+    renderCumulativeChart();
+    renderMonthsChart(series);
+    lastChartsRenderT = performance.now();
+  }
+
+  // Redibujar los gráficos si cambia el ancho disponible. Si pasa apenas
+  // cargada la página (p. ej. por un reflow inicial), se conserva la
+  // animación de dibujo; después, se redibuja sin re-animar.
+  let roRaf = 0;
+  let lastChartsRenderT = 0;
+  const chartsRO = new ResizeObserver(() => {
+    cancelAnimationFrame(roRaf);
+    roRaf = requestAnimationFrame(() => {
+      const skipAnim = performance.now() - lastChartsRenderT > 800;
+      if (chartCumHost.clientWidth > 0 && Math.abs(chartCumHost.clientWidth - lastCumW) > 1) {
+        renderCumulativeChart(skipAnim);
+      }
+      if (
+        chartMonHost.clientWidth > 0 &&
+        lastSeries.length > 0 &&
+        Math.abs(chartMonHost.clientWidth - lastMonW) > 1
+      ) {
+        renderMonthsChart(lastSeries, skipAnim);
+      }
+    });
+  });
+  chartsRO.observe(chartCumHost);
+  chartsRO.observe(chartMonHost);
+
   /* ── Popup de edición / eliminación de movimientos ── */
   function makeClickableRow(node: HTMLLIElement, onOpen: () => void): void {
     node.classList.add('is-clickable');
@@ -815,6 +1790,7 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
     editAmount.value = String(e.amount);
     editDate.value = e.date;
     editCategory.value = e.category;
+    comboSync(editCategory);
     editPaidBy.value = e.paidBy;
     openEditModal();
   }
@@ -933,11 +1909,13 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
       return;
     }
     const date = String(fd.get('date')) || todayISO();
+    const category = String(fd.get('category')) as CategoryId;
+    const description = String(fd.get('description')).trim() || getCategory(category).label;
     try {
       const created = await apiAddExpense({
-        description: String(fd.get('description')).trim(),
+        description,
         amount: Math.round(amount * 100) / 100,
-        category: String(fd.get('category')) as CategoryId,
+        category,
         paidBy: String(fd.get('paidBy')).trim(),
         date,
       });
@@ -948,6 +1926,7 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
     }
     selectedMonth = monthKeyOf(date);
     form.reset();
+    comboSync($<HTMLSelectElement>('#category'));
     dateInput.value = todayISO();
     paidBySelect.value = currentUser.displayName;
     if (isMobile()) {
@@ -1013,6 +1992,7 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
       return;
     }
     fixedForm.reset();
+    comboSync($<HTMLSelectElement>('#fixed-category'));
     fixedPaidBySel.value = currentUser.displayName;
     if (!isMobile()) $<HTMLInputElement>('#fixed-description').focus();
     render();
@@ -1054,6 +2034,9 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
   $<HTMLSelectElement>('#category').value = CATEGORIES[0]!.id;
   $<HTMLSelectElement>('#fixed-category').value = CATEGORIES[0]!.id;
   $<HTMLSelectElement>('#income-type').value = INCOME_TYPES[0]!.id;
+  enhanceSelectSearch($<HTMLSelectElement>('#category'));
+  enhanceSelectSearch($<HTMLSelectElement>('#fixed-category'));
+  enhanceSelectSearch(editCategory);
   updateHideBtn();
   renderHouseHeader();
   populateMemberSelects();
@@ -1511,6 +2494,61 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
+  }
+
+  /* ── Combobox de categoría con búsqueda ── */
+  .combo {
+    position: relative;
+  }
+
+  .combo-native {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .combo-menu {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0.3rem;
+    list-style: none;
+    background: rgba(12, 18, 38, 0.98);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px -12px rgba(2, 6, 23, 0.7);
+  }
+
+  .combo-option {
+    padding: 0.5rem 0.6rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .combo-option:hover,
+  .combo-option.is-active {
+    background: rgba(99, 102, 241, 0.28);
+  }
+
+  .combo-empty {
+    padding: 0.5rem 0.6rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
   }
 
   .btn-primary {
@@ -2154,6 +3192,791 @@ const initialData = { user, house, expenses, fixed, income, fixedPaid };
     .fixed-item .paid-toggle {
       grid-column: 1 / -1;
       justify-self: start;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     SKIN GLASSMORPHISM — superficies de vidrio, brillos y animaciones.
+     Va al final del bloque para pisar la piel anterior sin tocar el layout.
+     ═══════════════════════════════════════════════════════════════════ */
+
+  .card {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+  }
+
+  .summary .card:hover,
+  .stat-tile:hover,
+  .chart-card:hover {
+    border-color: var(--glass-border-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 24px 48px -20px rgba(2, 6, 23, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  .desktop-nav {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .house-chip {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--glass-border);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+
+  .house-code {
+    background: rgba(7, 11, 26, 0.55);
+    border-color: rgba(148, 163, 197, 0.35);
+  }
+
+  .logo {
+    display: inline-block;
+    animation: logo-float 5.5s ease-in-out infinite;
+  }
+
+  @keyframes logo-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    border-radius: 12px;
+    box-shadow: 0 12px 26px -12px rgba(99, 102, 241, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    filter: brightness(1.12);
+    transform: translateY(-1px);
+    box-shadow: 0 16px 32px -12px rgba(99, 102, 241, 1), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  }
+
+  .btn-income {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-radius: 12px;
+    box-shadow: 0 12px 26px -12px rgba(16, 185, 129, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  }
+
+  .btn-income:hover {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  /* ── Tarjeta de saldo: vidrio esmeralda con brillo que barre ── */
+  .saldo-card {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.62) 0%, rgba(4, 120, 87, 0.5) 100%);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    border: 1px solid rgba(110, 231, 183, 0.35);
+    box-shadow: 0 18px 44px -16px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  .saldo-card.saldo-negative {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.6) 0%, rgba(153, 27, 27, 0.48) 100%);
+    border-color: rgba(252, 165, 165, 0.35);
+    box-shadow: 0 18px 44px -16px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+
+  .saldo-shine {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      115deg,
+      transparent 32%,
+      rgba(255, 255, 255, 0.16) 46%,
+      rgba(255, 255, 255, 0.03) 55%,
+      transparent 70%
+    );
+    transform: translateX(-130%);
+    animation: shine-swipe 7s ease-in-out infinite;
+  }
+
+  @keyframes shine-swipe {
+    0% {
+      transform: translateX(-130%);
+    }
+    55%,
+    100% {
+      transform: translateX(130%);
+    }
+  }
+
+  .saldo-spark {
+    margin-top: 0.55rem;
+    height: 34px;
+  }
+
+  .saldo-spark :global(.spark-svg) {
+    width: min(100%, 190px);
+    height: 100%;
+    display: block;
+  }
+
+  .saldo-spark :global(.spark-line) {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.78);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: stroke-dashoffset 1.1s cubic-bezier(0.4, 0, 0.2, 1) 0.2s;
+  }
+
+  .saldo-spark :global(.spark-dot) {
+    fill: #fff;
+  }
+
+  .saldo-spark :global(.spark-zero) {
+    stroke: rgba(255, 255, 255, 0.3);
+    stroke-width: 1;
+  }
+
+  /* ── Dona por categoría ── */
+  .cat-flex {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+  }
+
+  .donut-wrap {
+    position: relative;
+    width: 168px;
+    height: 168px;
+    flex: none;
+  }
+
+  .donut-shimmer {
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+  }
+
+  .donut-wrap :global(.donut-svg) {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .donut-wrap :global(.donut-seg) {
+    transition: stroke-dasharray 0.9s cubic-bezier(0.22, 1, 0.36, 1), stroke-width 0.2s ease;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .donut-wrap :global(.donut-seg.is-hot),
+  .donut-wrap :global(.donut-seg:focus-visible) {
+    stroke-width: 20;
+  }
+
+  .donut-wrap :global(.donut-center) {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    gap: 0.05rem;
+    pointer-events: none;
+  }
+
+  .donut-wrap :global(.donut-center strong) {
+    font-size: 1.3rem;
+    letter-spacing: -0.02em;
+  }
+
+  .donut-wrap :global(.donut-center span) {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+  }
+
+  .cat-breakdown {
+    flex: 1;
+    min-width: 0;
+    max-height: 190px;
+    overflow-y: auto;
+    padding-right: 0.3rem;
+  }
+
+  /* ── Filas de desglose con micro-barra ── */
+  .breakdown :global(.b-row) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.28rem;
+  }
+
+  .breakdown :global(.b-top) {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .breakdown :global(.b-right) {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    flex: none;
+  }
+
+  .breakdown :global(.b-pct) {
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    min-width: 2.5em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .breakdown :global(.b-bar) {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(148, 163, 197, 0.13);
+    overflow: hidden;
+  }
+
+  .breakdown :global(.b-bar-fill) {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: 999px;
+    transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* ── Sección de estadísticas ── */
+  .stats {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .stats-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0 0.15rem;
+  }
+
+  .stats-head h2 {
+    font-size: 1.25rem;
+  }
+
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+  }
+
+  .stat-tile {
+    padding: 1.05rem 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .stat-label {
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  .stat-hint {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+
+  /* Estado (dirección del gasto): color + flecha, nunca color solo. */
+  .stat-delta.delta-up {
+    color: #f87171;
+  }
+
+  .stat-delta.delta-down {
+    color: #34d399;
+  }
+
+  .meter {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(148, 163, 197, 0.16);
+    overflow: hidden;
+    margin: 0.15rem 0;
+  }
+
+  .meter-fill {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: 999px;
+    transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
+  }
+
+  :global(.meter-fill.meter-ok) {
+    background: linear-gradient(90deg, #059669, #34d399);
+  }
+
+  :global(.meter-fill.meter-warn) {
+    background: linear-gradient(90deg, #b45309, #f59e0b);
+  }
+
+  :global(.meter-fill.meter-bad) {
+    background: linear-gradient(90deg, #b91c1c, #ef4444);
+  }
+
+  /* ── Tarjetas de gráficos ── */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .chart-card {
+    padding: 1.1rem 1.15rem 0.7rem;
+    overflow: hidden;
+  }
+
+  .chart-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .chart-head h3 {
+    font-size: 0.98rem;
+  }
+
+  .chart-legend {
+    display: flex;
+    gap: 0.9rem;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+  }
+
+  .lg-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .lg-item[hidden] {
+    display: none;
+  }
+
+  .lg-line {
+    width: 14px;
+    height: 3px;
+    border-radius: 2px;
+  }
+
+  .lg-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+  }
+
+  .chart-body {
+    position: relative;
+    min-height: 232px;
+  }
+
+  .chart-shimmer {
+    position: absolute;
+    inset: 6px 0 26px;
+  }
+
+  .chart-body :global(.chart-empty-note) {
+    margin: 0;
+    padding: 4.5rem 1rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+  }
+
+  .page :global(.chart-svg) {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .page :global(.grid-line) {
+    stroke: var(--chart-grid);
+    stroke-width: 1;
+  }
+
+  .page :global(.axis-label) {
+    fill: var(--text-muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .page :global(.axis-label-current) {
+    fill: var(--text);
+    font-weight: 700;
+  }
+
+  .page :global(.cum-line) {
+    fill: none;
+    stroke: var(--chart-gasto);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .page :global(.cum-line-prev) {
+    fill: none;
+    stroke: var(--chart-context);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.85;
+  }
+
+  .page :global(.cum-area) {
+    opacity: 0;
+    transition: opacity 0.8s ease 0.35s;
+  }
+
+  .page :global(.cum-area.is-on) {
+    opacity: 1;
+  }
+
+  .page :global(.cum-dot) {
+    fill: var(--chart-gasto);
+    stroke: rgba(7, 11, 26, 0.9);
+    stroke-width: 2;
+    opacity: 0;
+    transition: opacity 0.3s ease 0.8s;
+  }
+
+  .page :global(.cum-dot.is-on) {
+    opacity: 1;
+  }
+
+  .page :global(.chart-endlabel) {
+    fill: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+    opacity: 0;
+    transition: opacity 0.4s ease 0.9s;
+  }
+
+  .page :global(.chart-endlabel.is-on) {
+    opacity: 1;
+  }
+
+  .page :global(.crosshair) {
+    stroke: rgba(148, 163, 197, 0.55);
+    stroke-width: 1;
+  }
+
+  .page :global(.hover-layer),
+  .page :global(.band-hover) {
+    outline: none;
+    cursor: crosshair;
+  }
+
+  .page :global(.col) {
+    transform: scaleY(0);
+    transform-origin: center bottom;
+    transform-box: fill-box;
+    transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1), filter 0.2s ease;
+  }
+
+  .page :global(.col.is-grown) {
+    transform: scaleY(1);
+  }
+
+  .page :global(.col-gasto) {
+    fill: var(--chart-gasto);
+  }
+
+  .page :global(.col-ingreso) {
+    fill: var(--chart-ingreso);
+  }
+
+  .page :global(.month-group.is-hot .col) {
+    filter: brightness(1.28);
+  }
+
+  /* ── Tooltip de gráfico ── */
+  .page :global(.chart-tip) {
+    position: absolute;
+    z-index: 6;
+    pointer-events: none;
+    background: rgba(9, 14, 30, 0.94);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 0.5rem 0.65rem;
+    box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.65);
+    min-width: 120px;
+    white-space: nowrap;
+  }
+
+  .page :global(.tip-title) {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 0.28rem;
+  }
+
+  .page :global(.tip-row) {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.84rem;
+    line-height: 1.5;
+  }
+
+  .page :global(.tip-key) {
+    width: 12px;
+    height: 3px;
+    border-radius: 2px;
+    flex: none;
+  }
+
+  .page :global(.tip-value) {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .page :global(.tip-label) {
+    color: var(--text-muted);
+  }
+
+  /* ── Tabla "Ver datos" (gemela accesible del gráfico) ── */
+  .chart-table {
+    margin: 0.3rem 0 0.45rem;
+  }
+
+  .chart-table summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    width: fit-content;
+    padding: 0.15rem 0.35rem;
+    border-radius: 6px;
+    user-select: none;
+  }
+
+  .chart-table summary:hover {
+    color: var(--text);
+    background: rgba(148, 163, 197, 0.1);
+  }
+
+  .chart-table-scroll {
+    max-height: 180px;
+    overflow: auto;
+    margin-top: 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  .chart-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+
+  .chart-table :global(th),
+  .chart-table :global(td) {
+    text-align: right;
+    padding: 0.32rem 0.6rem;
+    border-bottom: 1px solid rgba(148, 163, 197, 0.09);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .chart-table :global(th:first-child),
+  .chart-table :global(td:first-child) {
+    text-align: left;
+  }
+
+  .chart-table :global(th) {
+    position: sticky;
+    top: 0;
+    background: rgba(10, 15, 32, 0.95);
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .chart-table :global(tr:last-child td) {
+    border-bottom: none;
+  }
+
+  /* ── Modal y nav mobile en vidrio ── */
+  .modal {
+    background: linear-gradient(160deg, rgba(32, 43, 71, 0.93), rgba(13, 20, 40, 0.9));
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    backdrop-filter: blur(24px) saturate(1.5);
+  }
+
+  .modal-backdrop:not([hidden]) .modal {
+    animation: pop-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .modal-backdrop {
+    background: rgba(2, 6, 23, 0.55);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+
+  .mobile-nav {
+    background: rgba(9, 14, 30, 0.62);
+    -webkit-backdrop-filter: blur(22px) saturate(1.6);
+    backdrop-filter: blur(22px) saturate(1.6);
+    border-top: 1px solid var(--glass-border);
+  }
+
+  .nav-fab {
+    box-shadow: 0 10px 26px rgba(99, 102, 241, 0.6), 0 0 0 0 rgba(129, 140, 248, 0.45);
+    animation: fab-pulse 3.2s ease-in-out infinite;
+  }
+
+  @keyframes fab-pulse {
+    0%,
+    100% {
+      box-shadow: 0 10px 26px rgba(99, 102, 241, 0.6), 0 0 0 0 rgba(129, 140, 248, 0.4);
+    }
+    50% {
+      box-shadow: 0 10px 30px rgba(99, 102, 241, 0.75), 0 0 0 9px rgba(129, 140, 248, 0);
+    }
+  }
+
+  /* ── Entrada escalonada de las tarjetas ── */
+  .header {
+    animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .desktop-nav {
+    animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
+  }
+
+  .summary > .card {
+    animation: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .summary > .card:nth-child(1) {
+    animation-delay: 0.08s;
+  }
+
+  .summary > .card:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .summary > .card:nth-child(3) {
+    animation-delay: 0.22s;
+  }
+
+  .kpi-row .stat-tile {
+    animation: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .kpi-row .stat-tile:nth-child(1) {
+    animation-delay: 0.18s;
+  }
+
+  .kpi-row .stat-tile:nth-child(2) {
+    animation-delay: 0.24s;
+  }
+
+  .kpi-row .stat-tile:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  .kpi-row .stat-tile:nth-child(4) {
+    animation-delay: 0.36s;
+  }
+
+  .charts-grid .chart-card {
+    animation: rise-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .charts-grid .chart-card:nth-child(1) {
+    animation-delay: 0.3s;
+  }
+
+  .charts-grid .chart-card:nth-child(2) {
+    animation-delay: 0.38s;
+  }
+
+  .form-col > * {
+    animation: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+  }
+
+  .list-card {
+    animation: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.28s both;
+  }
+
+  /* ── Responsive de la sección nueva ── */
+  @media (max-width: 1080px) {
+    .kpi-row {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .charts-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 820px) {
+    .stats {
+      display: none;
+    }
+
+    .page[data-view='resumen'] .stats {
+      display: flex;
+    }
+
+    .kpi-row {
+      gap: 0.7rem;
+    }
+
+    .stat-value {
+      font-size: 1.3rem;
+    }
+
+    .stat-tile {
+      padding: 0.9rem 1rem;
+    }
+
+    .cat-flex {
+      flex-direction: column;
+    }
+
+    .cat-breakdown {
+      width: 100%;
+      max-height: none;
+      overflow-y: visible;
+      padding-right: 0;
     }
   }
 </style>

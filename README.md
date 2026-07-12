@@ -58,11 +58,49 @@ migraciones a mano.
 
 ## Desarrollo local
 
+Necesitás una base PostgreSQL. Tenés dos opciones:
+
+**Opción A — con tu propio PostgreSQL:**
+
 ```bash
 pnpm install
 cp .env.example .env          # y completá DATABASE_URL con tu Postgres local
 pnpm dev                      # http://localhost:4321
 ```
+
+**Opción B — base embebida, sin instalar nada (recomendada para probar):**
+
+La carpeta [`dev-db/`](dev-db/) trae un PostgreSQL embebido (PGlite) que corre
+dentro de Node, sin instalar Postgres ni Docker.
+
+```bash
+pnpm install
+# En una terminal, levantá la base de desarrollo:
+cd dev-db && npm install && npm start      # PGlite en 127.0.0.1:55432
+# (opcional, otra vez en dev-db) cargá datos de ejemplo con la app ya corriendo:
+#   npm run seed                            # crea nico / prueba123 + 6 meses de datos
+```
+
+Poné en el `.env` de la raíz:
+
+```
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/postgres
+PG_POOL_MAX=1
+```
+
+y en otra terminal:
+
+```bash
+pnpm dev                      # http://localhost:4321
+```
+
+> `PG_POOL_MAX=1` es necesario solo con PGlite (acepta una sola conexión). Con
+> Postgres real podés quitarlo. Los datos de la base embebida se guardan en
+> `dev-db/pgdata/` (ignorada por git).
+>
+> En desarrollo, `astro dev` lee el `.env` vía `import.meta.env`; en producción
+> la config sigue llegando por `process.env` (pm2). `src/lib/db.ts` contempla los
+> dos casos.
 
 ## Comandos
 

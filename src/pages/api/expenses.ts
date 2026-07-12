@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { AppError, addExpense, deleteExpense, getActiveHouse, updateExpense } from '../../lib/db';
 import { errorResponse, json, parseAmount, readJson, requireUser } from '../../lib/http';
-import type { CategoryId } from '../../lib/types';
+import { getCategory, type CategoryId } from '../../lib/types';
 
 export const prerender = false;
 
@@ -12,10 +12,11 @@ export const POST: APIRoute = async ({ request, locals }) => {
     if (!house) throw new AppError('No tenés una casa activa.', 409);
 
     const body = await readJson(request);
+    const category = String(body.category ?? 'otros') as CategoryId;
     const expense = await addExpense(house.id, user.username, {
-      description: String(body.description ?? '').trim(),
+      description: String(body.description ?? '').trim() || getCategory(category).label,
       amount: parseAmount(body.amount),
-      category: String(body.category ?? 'otros') as CategoryId,
+      category,
       paidBy: String(body.paidBy ?? '').trim(),
       date: String(body.date ?? '').trim(),
     });

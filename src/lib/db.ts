@@ -22,14 +22,26 @@ const { Pool } = pg;
 // a float (OID 1700 = numeric).
 pg.types.setTypeParser(1700, (value) => Number.parseFloat(value));
 
-const connectionString = process.env.DATABASE_URL;
+// En producción (node + pm2) la config llega por `process.env`. En desarrollo,
+// `astro dev` NO copia el `.env` a `process.env`: lo expone en `import.meta.env`.
+// Leemos ambos (con prioridad a `process.env`) para que un `.env` en la raíz
+// funcione con `pnpm run dev` sin tener que exportar la variable a mano.
+const devEnv = import.meta.env as Record<string, string | undefined>;
+const connectionString = process.env.DATABASE_URL ?? devEnv.DATABASE_URL;
 if (!connectionString) {
   throw new Error(
-    'Falta la variable de entorno DATABASE_URL (ej: postgres://ourhouse:clave@localhost:5432/ourhouse)'
+    'Falta la variable de entorno DATABASE_URL (ej: postgres://ourhouse:clave@localhost:5432/ourhouse). ' +
+      'En desarrollo, copiá .env.example a .env y completá DATABASE_URL.'
   );
 }
 
-const pool = new Pool({ connectionString });
+// PG_POOL_MAX permite achicar el pool en entornos con pocas conexiones
+// (p. ej. una base embebida en desarrollo). Por defecto, el estándar de pg (10).
+const poolMax = process.env.PG_POOL_MAX ?? devEnv.PG_POOL_MAX ?? '10';
+const pool = new Pool({
+  connectionString,
+  max: Number.parseInt(poolMax, 10) || 10,
+});
 
 /** Error de validación de negocio: se traduce a un HTTP 4xx en los endpoints. */
 export class AppError extends Error {

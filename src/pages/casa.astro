@@ -509,4 +509,90 @@ const initialData = { user, houses };
       padding: 0.65rem 0.9rem;
     }
   }
+
+  /* ═══ Skin glassmorphism ═══ */
+  .card {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  .card:hover {
+    border-color: var(--glass-border-hover);
+  }
+
+  .logo {
+    display: inline-block;
+    animation: logo-float 5.5s ease-in-out infinite;
+  }
+
+  @keyframes logo-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+
+  .casa-header {
+    animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .casa-wrap > .card,
+  .two-col .card {
+    animation: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .casa-wrap > .card {
+    animation-delay: 0.08s;
+  }
+
+  .two-col .card:nth-child(1) {
+    animation-delay: 0.16s;
+  }
+
+  .two-col .card:nth-child(2) {
+    animation-delay: 0.24s;
+  }
+
+  .code-value {
+    background: rgba(7, 11, 26, 0.55);
+    border-color: rgba(148, 163, 197, 0.35);
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    border-radius: 12px;
+    box-shadow: 0 12px 26px -12px rgba(99, 102, 241, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transition: transform 0.15s ease, filter 0.2s ease;
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    filter: brightness(1.12);
+    transform: translateY(-1px);
+  }
+
+  .btn-join {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-radius: 12px;
+    box-shadow: 0 12px 26px -12px rgba(16, 185, 129, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transition: transform 0.15s ease, filter 0.2s ease;
+  }
+
+  .btn-join:hover {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  .btn-enter {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    box-shadow: 0 8px 18px -8px rgba(99, 102, 241, 0.8);
+  }
 </style>
